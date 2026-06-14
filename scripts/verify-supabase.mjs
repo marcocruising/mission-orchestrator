@@ -27,6 +27,7 @@ const tables = [
   "mission_state",
   "alert_log",
   "plan_eval",
+  "tracks",
 ];
 
 let ok = 0;

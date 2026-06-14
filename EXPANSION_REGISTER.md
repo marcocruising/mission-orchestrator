@@ -1,6 +1,8 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 complete · **Phase A0 complete (A0.1–A0.8)** · A1–A4 + B–D pending
+**Status:** S0–S10 complete · **Phase A0 complete (A0.1–A0.8)** · **A1 complete (3D cv6 + slant range)** · **A1-revise complete** · A2–A4 + B–D pending
+
+> **Agent pickup for active work:** [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) Phase **A2** — MotionModel + EnvironmentContext.
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -58,6 +60,10 @@ These came from the post-S10 gap analysis and Phase A0 implementation. **Read be
 | W8 | **Engine purity** | `CommsModel`, `EnvironmentContext` injected on `EngineInput` — never DB inside engine |
 | W9 | **Gate before grade** | Hard cutoffs (comms, depth, range) prune before objective scoring (P5) |
 | W10 | **One step at a time** | Green suite between steps; don't batch A1 sub-shapes without tests |
+| W11 | **3D spatial seam** | All engine math uses `Position3` + z-up; **only `spatial.ts`** converts legacy `depth_m` (`z_m = -depth_m`) |
+| W12 | **Horizontal bearing ≠ 3D** | `horizontalBearingMeasurement` is azimuth only; full triangulation needs elevation (C2/D6) |
+| W13 | **Slant range seam** | Use `rangeM()` / `rangeKm()` in coverage — not raw `hypot(dx, dy)`; C2 may need `inBeamRange` body |
+| W14 | **Volume patrol (C1)** | AREA tasks patrol a **3D volume** (`z_min_m`, `z_max_m`), not a horizontal slice only |
 
 ---
 
@@ -94,6 +100,25 @@ Phase D — Tier 1 bodies (threats, spoofing, LLM, imported-data factors, solver
 
 Do not start Phase C until Phase A + B are green. Imported environmental/comms data lands in Phase A
 as **shapes + stub bodies**; real imported values become **Phase D bodies** behind those shapes.
+
+---
+
+## 3D spatial model (locked — June 2026)
+
+All Phase A+ engine work uses one vertical axis and SI internals. Full pickup spec: [A1_REVISE_3D.md](A1_REVISE_3D.md).
+
+| Topic | Rule |
+|-------|------|
+| **Engine position** | `Position3 { x_m, y_m, z_m }` — meters only inside `packages/engine` |
+| **Vertical axis** | **z-up**, sea surface = 0; altitude **> 0**, depth **< 0** (deeper = more negative) |
+| **Legacy DB** | Columns stay `x_km`, `depth_m`, `target_depth_m`; adapter: **`z_m = -depth_m`** in `spatial.ts` only |
+| **Air assets** | **`z_m` belief fact** (positive); do not infer altitude from `depth_m = 0` alone |
+| **Estimation state** | layout **`cv6`**: `[x_m, y_m, z_m, vx, vy, vz]` + 6×6 cov |
+| **Coverage range** | **3D slant range** via `rangeM()` seam (display as km for sensor `max_range_km`) |
+| **Gates (P5)** | z bounds: rating `z_m ≥ -rating`; min depth `z_m ≤ -min_depth_m`; max altitude `0 ≤ z_m ≤ max` |
+| **Display** | `altitude_m = max(z,0)`, `depth_display_m = max(-z,0)` (UI, LLM D5) |
+
+**A1 initial** shipped 2D cv4 estimation (horizontal ellipse, 4×4 cov). **A1-revise complete** — 3D cv6, slant range, z-up adapter per [A1_REVISE_3D.md](A1_REVISE_3D.md).
 
 ---
 
@@ -155,33 +180,37 @@ const DEFAULT_ENV_FACTORS: EnvFactor[] = [motionEnvFactor];
 
 Makes Kalman fusion, triangulation, and unified UI rendering into Tier 1 swaps later.
 
+**Status:** Initial A1 **done** · **A1-revise done** — 3D cv6 + slant range per [A1_REVISE_3D.md](A1_REVISE_3D.md).
+
 ### T2.1 — `Estimate = (mean, covariance)`
 
-- `type Estimate = { mean: number[]; cov: number[][]; ts: number }` — v1 state `[x, y, vx, vy]`.
-- v1 body: diagonal `σ²·I`, `vx = vy = 0`.
-- `covToEllipse(cov, k=2) → UncertaintyRegion` on the 2×2 position block.
-- **Rule:** store the full matrix always; never a scalar “confidence to promote later.”
+- `type Estimate = { layout: 'cv6'; mean: number[]; cov: number[][]; ts: number }` — state **`[x_m, y_m, z_m, vx, vy, vz]`** (SI).
+- v1 body: diagonal position σ², zero velocity; **`migrateEstimate()`** upgrades legacy 4D JSON.
+- `covToEllipse(cov, k=2) → UncertaintyRegion` on **horizontal x–y block** (map projection).
+- `zUncertainty(mean, cov) → { z_m, sigma_m }` from Z component.
+- **Rule:** store the full 6×6 matrix always; never a scalar “confidence to promote later.”
 
-**Tests:** ellipse geometry; serialize/deserialize preserves `cov`; positive-definite guard.
+**Tests:** ellipse geometry; serialize/deserialize; positive-definite guard; 4D→6D migration with large z variance (not z=0).
 
 ### T2.2 — `Measurement = { z, h, R, ts, observer_pose, observer_id, sensor }`
 
-- v1 position producer: `h = state => [state[0], state[1]]`, `R = σ²·I`.
-- Test-only bearing producer: `h = state => [atan2(…)]`, `R = [[σθ²]]`.
+- v1 **`position3Measurement`**: `h(state) => [x, y, z]`, diagonal R in meters.
+- **`horizontalBearingMeasurement`**: azimuth in horizontal plane only — **not** full 3D LOS (elevation deferred).
 - **Rule:** `update()` uses `h` and `R` from the measurement — never hardcoded identity.
 
-**Tests:** sensor-agnostic update path (no `if sensor === …`).
+**Tests:** sensor-agnostic update path (no `if sensor === …`); 3D fix pulls z.
 
 ### T2.3 — `Estimator { predict, update }`
 
 - v1 `FixedGainEstimator`; future `KalmanEstimator` (Tier 1 swap, same interface).
-- **Rule:** pure; `dt`/`now` passed in; `MotionModel` injected.
+- **Rule:** pure; `dt`/`now` passed in; **6D SI state**; `MotionModel` injected in A2.
+- **`spatial.ts`**: `StateLayout` indices — no raw `state[n]` elsewhere.
 
-**Tests:** predict grows trace(cov); update shrinks trace(cov) and pulls mean toward `z`; determinism;
+**Tests:** predict grows trace(cov); update shrinks trace(cov) and pulls mean toward z; determinism;
 seam-swap compiles at same call sites.
 
-**Kalman-readiness (write as `test.todo` now):** two bearing-only measurements ~90° apart →
-anisotropic covariance collapse. FixedGain will fail; documents the future contract.
+**Kalman-readiness (`test.todo`):** two bearing-only measurements ~90° apart → anisotropic covariance;
+**plus** future 3D bearing + elevation for true triangulation.
 
 ### T2.4 — `Track` / `Observation` / `UncertaintyRegion`
 
@@ -197,7 +226,7 @@ anisotropic covariance collapse. FixedGain will fail; documents the future contr
 **Migration note:** own-asset belief remains `belief_facts` (scalar Facts) in v1. External contacts use
 `Track`. Promoting own assets to `Estimate` is a Phase D body swap once `reconcile` + ingest paths are stable.
 
-**Commit boundary:** `A1: estimation shapes`.
+**Commit boundary:** `A1: estimation shapes` (initial, done) · **`A1-revise: 3D spatial model`** (cv6 + slant range).
 
 ---
 
@@ -213,12 +242,12 @@ interface MotionModel {
 }
 ```
 
-- v1 `ConstantVelocityModel`: `mean += v·dt`, `Q = q0·dt·I`.
+- v1 `ConstantVelocityModel` on **6D SI state**: `mean += v·dt`, `Q = q0·dt·I`.
 - **Single injection point** for: dead reckoning, search-ellipse growth, `Fact.half_life` derivation (Phase D).
-- Future body: add current drift `+ [u,v]·dt` from imported currents; wind drift for surface assets.
+- Future body: current drift on vx,vy; wind on surface/air domain only; vz constrained by domain.
 
 **Tests:** CV advances position exactly; trace(Q) grows with dt; search ellipse semi-major after Δt
-matches `Q` (not ad-hoc `v_max·Δt` in UI).
+matches horizontal block of Q (not ad-hoc `v_max·Δt` in UI).
 
 ### T2.6 — `EnvironmentContext` + imported field storage
 
@@ -229,18 +258,20 @@ type FieldKind = 'salinity_psu' | 'sea_state_hs_m' | 'wind_ms' | 'current_u_ms' 
 
 interface EnvironmentSample {
   ts: number;
-  x_km: number;
-  y_km: number;
-  depth_m?: number;
+  x_m: number;
+  y_m: number;
+  z_m: number;       // signed z-up (or store legacy depth_m in DB, convert at ingest)
   kind: FieldKind;
   value: number;
 }
 
 interface EnvironmentContext {
   ts: number;
-  sample(kind: FieldKind, x_km: number, y_km: number, depth_m?: number): number | null;
+  sample(kind: FieldKind, pos: Position3): number | null;
 }
 ```
+
+> **Shape change from draft:** use **`Position3`** at engine boundary (A2). DB rows may still store `x_km` / `depth_m` with adapter on load.
 
 - Supabase `environment_samples` (or `environment_fields` with jsonb grid — pick one, store `(ts, kind, x, y, depth, value)` rows for v1).
 - v1 body: `StaticEnvironmentContext` returns config defaults (no import yet).
@@ -370,8 +401,9 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] A0.6 `summarize` entry point green
 - [x] A0.7 `CommsModel` + fleet gate green
 - [x] A0.8 `resolveOperatingPoint` green
-- [ ] T2.1–T2.4 estimation shapes + `tracks` migration + UI ellipse refactor
-- [ ] T2.5 MotionModel + T2.6 EnvironmentContext + DB table
+- [x] A1 initial T2.1–T2.4 (2D cv4): estimation modules, `tracks` table, UI ellipse via `ownAssetSearchRegion`
+- [x] **A1-revise:** 3D `spatial.ts`, cv6 state, slant range, z-up adapter — [A1_REVISE_3D.md](A1_REVISE_3D.md)
+- [ ] T2.5 MotionModel + T2.6 EnvironmentContext (`sample(kind, Position3)`) + DB table
 - [ ] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables — **stub done in A0.7**
 - [ ] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
 - [ ] Kalman-readiness `test.todo` written
@@ -414,21 +446,20 @@ never branches on handle contents.
 
 Only after Phase A + B are green.
 
-## C1 — Area / patrol coverage (T3.1 body)
+## C1 — Area / patrol coverage (T3.1 body) — **3D volume patrol**
 
 - Add `task.kind: 'POINT' | 'AREA'` (default `POINT`).
-- AREA params: `{ geometry, required_quality, revisit_interval_s }`.
-- `coverageArea(…) → { cov_t, confidence }` — covered-cell fraction, quality-weighted, temporal revisit decay.
-- Planner: sweep-path / waypoint-sequence candidates (new move kind or operating-point extension).
+- AREA params: `{ footprint, z_min_m, z_max_m, required_quality, revisit_interval_s, cell_size_m? }` in **z-up** frame (`z_min_m` deeper / more negative than `z_max_m` for submerged layer, or positive band for air).
+- **`coverageVolume(…) → { cov_t, confidence }`** — fraction of **3D cells** covered/revisited, quality-weighted, temporal decay.
+- Planner: sweep-path / waypoint-sequence through volume (new move kind or operating-point extension).
 
-**Tests:** coverage rises with cells covered; unrevisited cells decay; one vehicle cannot blanket a long
-line instantly; rollup unchanged.
+**Tests:** coverage rises with cells covered; unrevisited cells decay; one vehicle cannot blanket volume instantly; rollup unchanged.
 
 ## C2 — Directional sensors + pointing (T3.2 body)
 
-- `beamGain(θ)` factor registered in `ENV_FACTORS`.
-- Pointing as operating-point dimension (`resolveOperatingPoint` returns `{ speed_kn, bearing_deg }`).
-- Contention: one sensor, one bearing at a time (fleet gate or capacity gate extension).
+- `beamGain(θ)` / **`inBeamRange(sensor, pose, target)`** — 3D geometry; slant range alone is insufficient.
+- Pointing: **`bearing_deg` + `elevation_deg`** (or 3D pointing handle) via `resolveOperatingPoint` — **register shape extension**.
+- Contention: one sensor, one pointing vector at a time.
 
 **Tests:** target outside beam → q ≈ 0; two tasks at different bearings conflict on one sensor.
 
@@ -523,20 +554,20 @@ All external data enters through **two ingestion surfaces** — never directly i
 
 | ID | Shape | Phase | Status |
 |----|-------|-------|--------|
-| T2.1 | `Estimate`, `covToEllipse` | A1 | Not started |
-| T2.2 | `Measurement` | A1 | Not started |
-| T2.3 | `Estimator` | A1 | Not started |
-| T2.4 | `Track`, `Observation`, `UncertaintyRegion` | A1 | Not started |
-| T2.5 | `MotionModel` | A2 | Not started |
-| T2.6 | `EnvironmentContext`, `environment_samples` | A2 | Not started |
+| T2.1 | `Estimate` cv6, `covToEllipse`, `zUncertainty` | A1 | ✅ |
+| T2.2 | `Measurement`, `position3Measurement` | A1 | ✅ |
+| T2.3 | `Estimator` (6D) | A1 | ✅ |
+| T2.4 | `Track`, `Observation`, `UncertaintyRegion` | A1 | ✅ tracks table + types |
+| T2.5 | `MotionModel` (6D SI) | A2 | Not started |
+| T2.6 | `EnvironmentContext.sample(kind, Position3)` | A2 | Not started |
 | T2.7 | `CommsModel` graph, `comms_links`, `comms_nodes` | A3 | Stub (A0.7) — graph pending |
 
 ## Tier 3 — Leaves (Phase C; guards in Phase B)
 
 | ID | Leaf | Guard | Body |
 |----|------|-------|------|
-| T3.1 | Area / patrol coverage | B1 rollup-is-leaf-agnostic | C1 |
-| T3.2 | Directional sensors + pointing | B2 envMult + B3 opaque handle | C2 |
+| T3.1 | **Volume** patrol coverage | B1 rollup-is-leaf-agnostic | C1 (`coverageVolume`) |
+| T3.2 | Directional sensors + **3D pointing** | B2 envMult + B3 opaque handle | C2 (`inBeamRange`, elevation) |
 
 ## Tier 1 — Bodies (Phase D)
 
@@ -592,4 +623,4 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 # Next action
 
-**Phase A1 next** — estimation shapes (`Estimate`, `Measurement`, `Estimator`, `Track`, unified uncertainty). Then A2 → A3 → A4 → Phase B.
+**Phase A2 next** — `MotionModel.predict` on 6D SI state + `EnvironmentContext.sample(kind, Position3)` + DB table. **Do not start Phase B** until A2–A4 shapes are green.

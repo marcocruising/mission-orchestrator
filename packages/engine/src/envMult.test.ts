@@ -6,7 +6,7 @@ import {
   type EnvMultContext,
 } from "./envMult.js";
 import { envMultMotion } from "./envMult.js";
-import { effectiveQuality, type SensorSpec, type VehicleState } from "./coverage.js";
+import { effectiveQuality, slantRangeKm, type SensorSpec, type VehicleState } from "./coverage.js";
 
 const passiveAcoustic: SensorSpec = {
   sensor: "passive_acoustic",
@@ -82,7 +82,8 @@ describe("effectiveQuality uses envMult factor list (A0.2 regression)", () => {
 
   it("default factors yield same quality as pre-refactor formula for a fixed fixture", () => {
     const q = effectiveQuality(passiveAcoustic, target, vehicle);
-    const rangeMult = Math.pow(1 - 2 / 10, 0.5);
+    const R = slantRangeKm(vehicle, target);
+    const rangeMult = Math.pow(1 - R / 10, 0.5);
     const motion = Math.exp(-1.6 * (4 / 8));
     const expected = passiveAcoustic.base_quality * rangeMult * motion;
     expect(q as number).toBeCloseTo(expected, 10);

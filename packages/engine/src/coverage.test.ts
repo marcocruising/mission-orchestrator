@@ -8,6 +8,7 @@ import {
   tier,
   confidenceMission,
   rangeMult,
+  slantRangeKm,
   isInfeasible,
   minAxisAggregator,
   meanAxisAggregator,
@@ -71,6 +72,31 @@ describe("effectiveQuality", () => {
       vehicle({ speed_kn: 7 })
     );
     expect(slow as number).toBeGreaterThan(fast as number);
+  });
+
+  it("quality is monotonic — greater vertical separation → lower quality (slant range)", () => {
+    const vehicleAt50m = vehicle({ depth_m: 50 });
+    const shallowTarget = effectiveQuality(
+      passiveAcoustic,
+      { target_x: 2, target_y: 0, target_depth_m: 0 },
+      vehicleAt50m
+    );
+    const deepTarget = effectiveQuality(
+      passiveAcoustic,
+      { target_x: 2, target_y: 0, target_depth_m: 200 },
+      vehicleAt50m
+    );
+    expect(isInfeasible(shallowTarget)).toBe(false);
+    expect(isInfeasible(deepTarget)).toBe(false);
+    expect(shallowTarget as number).toBeGreaterThan(deepTarget as number);
+  });
+
+  it("slantRangeKm exceeds horizontal-only distance when depths differ", () => {
+    const v = vehicle({ depth_m: 50 });
+    const horizontalOnly = Math.hypot(2, 0);
+    const slant = slantRangeKm(v, { target_x: 2, target_y: 0, target_depth_m: 0 });
+    expect(slant).toBeGreaterThan(horizontalOnly);
+    expect(slant).toBeCloseTo(Math.hypot(2, 0.05), 6);
   });
 });
 

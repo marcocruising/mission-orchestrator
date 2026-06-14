@@ -1,10 +1,11 @@
 # Mission Orchestrator — Handover
 
 **Date:** June 2026  
-**Status:** S0–S10 complete · **Phase A0 complete** · A1–D pending · remote Supabase live
+**Status:** S0–S10 complete · **Phase A0 complete** · **A1 complete (3D cv6 + slant range)** · **A1-revise complete** · remote Supabase live (11 tables)
 
 This document summarizes what was built, how to run it, and lessons learned. The original build spec is
 [README.md](README.md). The active expansion plan is [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
+**Next phase:** A2 — MotionModel + EnvironmentContext.
 
 ---
 
@@ -51,11 +52,26 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 | **A0.7** | `commsModel.ts` | Fleet comms gate (D2) — `CommsModel` stub; gate uses `fleetUsage` |
 | **A0.8** | `operatingPoint.ts` | Directional sensors (C2) — opaque `resolveOperatingPoint` |
 
+### Structural expansion — Phase A1 (estimation + 3D spatial)
+
+| Module | What shipped |
+|--------|----------------|
+| `spatial.ts` | `Position3`, z-up adapters, `StateLayout`, `slantRangeM`, `rangeKm` |
+| `estimate.ts` | cv6 `Estimate`, `migrateEstimate`, `zUncertainty`, `covToEllipse` |
+| `measurement.ts` | `position3Measurement`, `horizontalBearingMeasurement`, meters |
+| `estimator.ts` | 6D `FixedGainEstimator` |
+| `coverage.ts` | `slantRangeKm` via spatial seam |
+| `searchRegion.ts` | `ownAssetSearchUncertainty` (6D reachable set + z σ) |
+| `track.ts` / `tracks` table | External contact tracks |
+| UI | `ownAssetSearchUncertainty`, z label on comms loss |
+
+~133 tests green (1 Kalman `test.todo`).
+
 ### Not started
 
 | Track | Scope |
 |-------|--------|
-| **A1–A4** | Estimation shapes, motion/env DB, comms graph DB, env factor registry |
+| **A2–A4** | MotionModel, EnvironmentContext, comms graph, env factor registry |
 | **B** | Tier 3 guard tests (rollup leaf-agnostic) |
 | **C** | Area patrol, directional sensor bodies |
 | **D** | Imported data, S11–S13, smart bodies behind seams |
@@ -67,24 +83,32 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 
 ```
 packages/engine/     Pure logic — zero DB deps, Vitest property tests
+  spatial.ts         Position3, z-up adapters, slant range (A1)
+  estimate.ts        cv6 Estimate, migrateEstimate, zUncertainty
+  measurement.ts     position3Measurement, horizontalBearingMeasurement
+  estimator.ts       6D FixedGainEstimator
+  coverage.ts        effectiveQuality — 3D slant range via slantRangeKm
+  searchRegion.ts    ownAssetSearchUncertainty (6D reachable set)
+  track.ts           External contact tracks
   reconcile.ts       Ingest merge seam (A0.1)
   envMult.ts         Extensible environment factors (A0.2)
   objective.ts       Extensible plan scoring terms (A0.4)
   commsModel.ts      Comms stub — gate wired (A0.7)
   operatingPoint.ts  Opaque operating-point resolver (A0.8)
   summarize.ts       Alert narration seam (A0.6)
-packages/db/         Supabase client, belief/mission loaders, engine input adapter
+packages/db/         Supabase client, belief/mission loaders, tracks loader
 apps/orchestrator/   CLI: inspect | sim | tick | apply
 apps/ui/             Vite + React Realtime dashboard
 supabase/
-  migrations/        S0–S8 DDL (RLS enabled on all tables)
+  migrations/        S0–A1 DDL incl. tracks (RLS enabled)
   seed.sql           Demo fleet, missions, config tunables
   bootstrap.sql      Combined schema+seed for SQL Editor (idempotent)
 scripts/
   lint-engine.mjs    CI guardrail — fails if engine imports DB or world_truth
-  verify-supabase.mjs  Checks 10 tables + anon RLS via .env keys
+  verify-supabase.mjs  Checks 11 tables + anon RLS via .env keys
   setup-db.mjs       Applies migrations via DATABASE_URL (optional)
-EXPANSION_REGISTER.md  Canonical expansion plan (phases A–D)
+A1_REVISE_3D.md      A1 3D spatial upgrade spec (complete)
+EXPANSION_REGISTER.md  Canonical plan — phases, tiers, watch-outs
 ```
 
 ---
@@ -93,12 +117,12 @@ EXPANSION_REGISTER.md  Canonical expansion plan (phases A–D)
 
 **Project:** `wyeryyczsdezyvrsqxep` (matches `.env` and Cursor Supabase MCP after re-link)
 
-- 10/10 tables reachable via REST
+- 11/11 tables reachable via REST (includes `tracks`)
 - RLS enabled; anon can read; service role writes
 - Demo seed: 2 assets, 2 missions, 2 assignments, 13 config keys
 
 ```bash
-pnpm db:verify    # REST check — no DATABASE_URL needed
+pnpm db:verify    # REST check — expect 11/11 tables
 pnpm db:setup     # Applies migrations via DATABASE_URL (optional path)
 ```
 
@@ -116,13 +140,13 @@ pnpm db:setup     # Applies migrations via DATABASE_URL (optional path)
 ```bash
 pnpm install
 pnpm build
-pnpm db:verify      # expect 10/10 tables
+pnpm db:verify      # expect 11/11 tables
 ```
 
 ### Automated tests
 
 ```bash
-pnpm verify         # guardrail + build + 92 tests (87 engine)
+pnpm verify         # guardrail + build + ~133 tests
 ```
 
 ### Terminal demo (main loop)
@@ -183,8 +207,8 @@ assignments + missionDefs + belief + commsModel + resolveOperatingPoint
 
 | Check | Result |
 |-------|--------|
-| `pnpm db:verify` | 10/10 tables, anon RLS OK |
-| `pnpm verify` | 92 tests passed (87 engine) |
+| `pnpm db:verify` | 11/11 tables, anon RLS OK |
+| `pnpm verify` | ~133 tests passed |
 | Engine purity lint | Passed |
 
 **Demo note:** With default seed, `mission-track` can sit AT_RISK while salience stays below σ=0.4 — alerts/plans may not fire until seed or timeline is tuned (see learnings below).
@@ -265,12 +289,15 @@ See EXPANSION_REGISTER A3 for the target shape.
 Planner emits handle strings; only `resolveOperatingPoint` interprets them (enum, numeric, JSON bearing).
 Directional sensors (C2) add `bearing_deg` without planner changes.
 
-### 15. UI search ellipse is still ad-hoc
+### 15. UI search ellipse unified with engine (A1)
 
-`apps/ui/src/lib.ts` uses `v_max·Δt` directly. A1/T2.4 unifies with `covToEllipse` from `Estimate` —
-refactor UI when estimation shapes land; do not add a third uncertainty representation.
+`ownAssetSearchUncertainty` in `searchRegion.ts` feeds the map ellipse and z σ label on comms loss.
 
-### 16. Uncommitted setup scripts (optional commit)
+### 16. 3D spatial model (A1 — complete)
+
+Engine uses **`Position3 { x_m, y_m, z_m }`**, **z-up** (altitude positive, depth negative). Legacy DB `depth_m` converts via **`z_m = -depth_m`** in `spatial.ts` only. See [A1_REVISE_3D.md](A1_REVISE_3D.md).
+
+### 17. Uncommitted setup scripts (optional commit)
 
 These may still exist untracked: `scripts/load-env.mjs`, `verify-supabase.mjs`, `setup-db.mjs`,
 `supabase/bootstrap.sql`, package.json db scripts.
@@ -279,15 +306,14 @@ These may still exist untracked: `scripts/load-env.mjs`, `verify-supabase.mjs`, 
 
 ## Known gaps / recommended next work
 
-1. **Phase A1** — `Estimate`, `Measurement`, `Estimator`, `Track`, unified `UncertaintyRegion`
-2. **Phase A2** — `MotionModel`, `EnvironmentContext`, `environment_samples` table
-3. **Phase A3** — Comms **graph** shape (`route`, per-link utilization) + `comms_links` / `comms_nodes` tables
-4. **Phase A4** — Full env factor registry (salinity, sea-state, fog stubs)
-5. **Phase B** — Rollup-is-leaf-agnostic guard test before area patrol
-6. **Trigger alert demo** — tune seed so salience ≥ 0.4 and plans appear in UI
-7. **Wire UI Accept** — API route or Edge Function for `applyPlan`
-8. **Sim idempotency** — upsert or `--force` for replay
-9. **S11–S13 bodies** — D3 threats, D4 spoofing reconcile body, D5 LLM summarize body
+1. **Phase A2** — `MotionModel` on 6D state; `EnvironmentContext.sample(kind, Position3)`
+2. **Phase A3** — Comms graph (`route`, per-link utilization)
+3. **Phase A4** — Full env factor registry (salinity, sea-state, fog stubs)
+4. **Phase B** — Rollup-is-leaf-agnostic guard before **volume patrol (C1)**
+5. **Trigger alert demo** — tune seed so salience ≥ 0.4
+6. **Wire UI Accept** — API route or Edge Function for `applyPlan`
+7. **Sim idempotency** — upsert or `--force` for replay
+8. **Seed UAV scenario** — `z_m` fact positive for air-domain demo
 
 ---
 
@@ -295,9 +321,12 @@ These may still exist untracked: `scripts/load-env.mjs`, `verify-supabase.mjs`, 
 
 | File | Purpose |
 |------|---------|
-| `EXPANSION_REGISTER.md` | Canonical plan — phases, tiers, watch-outs |
-| `packages/engine/src/stateEngine.ts` | MissionState derived pass |
-| `packages/engine/src/coverage.ts` | effectiveQuality, coverageTask aggregator |
+| **`EXPANSION_REGISTER.md`** | **Next agent start here** — Phase A2 MotionModel |
+| `A1_REVISE_3D.md` | A1 3D spatial spec (complete) |
+| `packages/engine/src/spatial.ts` | Position3, adapters, slant range |
+| `packages/engine/src/estimate.ts` | cv6 Estimate / migrateEstimate |
+| `packages/engine/src/coverage.ts` | effectiveQuality — slant range |
+| `packages/engine/src/searchRegion.ts` | 6D search uncertainty |
 | `packages/engine/src/objective.ts` | Plan scoring terms |
 | `packages/engine/src/planner.ts` | `Planner.replan`, candidate generation |
 | `packages/engine/src/commsModel.ts` | Comms stub (extend in A3) |

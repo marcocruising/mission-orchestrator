@@ -1,8 +1,9 @@
 # Mission Orchestrator — Build README (for Claude Code)
 
 > **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
-> **Phase A0 is complete** (seam retrofits). Active plan: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
-> Runbook and lessons: [HANDOVER.md](HANDOVER.md).
+> **Phase A0 is complete** (seam retrofits). **A1 complete** (3D cv6 estimation, slant range, z-up).
+> **Active work: Phase A2** — MotionModel + EnvironmentContext ([EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)).
+> Runbook: [HANDOVER.md](HANDOVER.md).
 
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
@@ -81,9 +82,13 @@ Create tables **incrementally** — each step's migration adds only what it need
 
 ## Conventions & decisions (pinned — so you don't invent these)
 
-- **Coordinate plane:** treat positions as a **flat local km grid** `(x, y, depth_m)`. If you store
-  lat/lon, convert to the km grid **once at ingest**; do not use geodesics. Units throughout: **km,
-  knots, seconds, metres**.
+- **Coordinate plane:** flat local grid. **Horizontal:** `x_km`, `y_km` (km) at DB/UI boundary.
+  **Vertical (engine):** signed **`z_m` (meters), z-up** — sea surface = 0; altitude **> 0**; depth **< 0**
+  (deeper = more negative). Inside `packages/engine`, use **`Position3 { x_m, y_m, z_m }`** (all meters).
+  Legacy Postgres **`depth_m`** (positive below surface) converts **`z_m = -depth_m`** in `spatial.ts` only.
+  Air assets use a **`z_m` belief fact** (positive). See [A1_REVISE_3D.md](A1_REVISE_3D.md).
+  If you store lat/lon, convert to the km grid **once at ingest**; do not use geodesics in-engine.
+  Units: **km** (horizontal display), **m** (vertical), **knots**, **seconds**.
 - **Clock / tick:** the orchestrator owns the single `now`. One tick = `ingest reports → recompute
   MissionState → monitor → (if a disruption passes the salience gate) plan`. Cadence configurable
   (e.g. 1 s). `now` is passed into the engine, never read inside it (P2).
@@ -144,6 +149,7 @@ chosen_plan_id, operator`.
 freshness(Δt)   = exp(−Δt / H)                                  H = 120 s
 q(v,s,t)        = base · rangeMult(R) · envMult(v,s)            ← effective quality of one sensor vs one task
                   rangeMult(R) = (1 − R/Rmax)^p   (p = 0.5)     graded falloff with range
+                  R = slantRangeKm(vehicle, target)             ← 3D distance (A1-revise); today 2D hypot (legacy)
                   envMult(v,s) = Π_k m_k(context, sensor)       general multiplier — TODAY = e^(−k_s·speed/vmax)
                   HARD: if R > Rmax → INFEASIBLE  (prune, do NOT score)   ← gate before grade (P5)
 sat(t,s)        = min( Σ_v q(v,s,t) / demand(t,s) , 1 )         ← axis satisfaction; Σ_v lets vehicles team up
@@ -274,7 +280,7 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 | Salinity / sea-state / fog | `envMult` factor list (A0.2; full registry A4) | D1 | ✅ partial |
 | Dynamics-aware staleness | `Fact.half_life` → `MotionModel` body | D6 | ✅ field plumbed |
 | Continuous operating points | `resolveOperatingPoint` (A0.8) | D6 | ✅ seam installed |
-| Area / sector-blanketing coverage | leaf above rollup + guard test B1 | C1 | pending |
+| Area / sector-blanketing coverage | leaf above rollup + guard test B1 | C1 volume patrol | pending |
 | Substitutable sensors | `coverageTask` aggregator (A0.3) | D6 | ✅ seam installed |
 | Real fleet/comms contention | `CommsModel` + per-link utilization (A0.7 stub; A3 shape) | D2 | ✅ stub installed |
 | Objective unit normalization | `computeObjective` + config λ's (A0.4) | D6 | ✅ seam installed |
@@ -288,5 +294,5 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0** for a greenfield build. **For current work**, start with **Phase A1** in
-[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md). Build one step at a time; green tests; stop between steps.
+**Start with S0** for a greenfield build. **For current work**, start with **Phase A2** in
+[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (MotionModel + EnvironmentContext). Build one step at a time; green tests; stop between steps.

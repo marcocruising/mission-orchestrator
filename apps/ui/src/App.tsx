@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import {
   supabase,
   tierColor,
-  searchEllipseSemiMajor,
+  ownAssetSearchUncertainty,
+  zMFromBeliefFields,
   type BeliefFact,
   type MissionStateRow,
   type PlanEvalRow,
@@ -99,17 +100,48 @@ export function App() {
             const f = factMap(a.id);
             const x = Number(f.x_km ?? 0);
             const y = Number(f.y_km ?? 0);
+            const z_m = zMFromBeliefFields({
+              z_m: f.z_m,
+              depth_m: f.depth_m,
+            });
             const commsUp = f.comms_up !== false;
-            const semi = searchEllipseSemiMajor(a.top_speed_kn, now, lastContact(a.id));
+            const uncertainty = ownAssetSearchUncertainty(
+              x,
+              y,
+              z_m,
+              a.top_speed_kn,
+              now,
+              lastContact(a.id)
+            );
+            const region = uncertainty.region;
+            const zLabel =
+              z_m >= 0
+                ? `alt ${z_m.toFixed(0)}±${uncertainty.z_sigma_m.toFixed(0)}m`
+                : `depth ${(-z_m).toFixed(0)}±${uncertainty.z_sigma_m.toFixed(0)}m`;
             return (
               <g key={a.id} transform={`translate(${x}, ${-y})`}>
                 {!commsUp && (
-                  <ellipse cx={0} cy={0} rx={semi} ry={semi * 0.4} fill="none" stroke="#f97316" strokeWidth={0.15} opacity={0.7} />
+                  <ellipse
+                    cx={0}
+                    cy={0}
+                    rx={region.semiMajor}
+                    ry={region.semiMinor}
+                    transform={`rotate(${(region.angleRad * 180) / Math.PI})`}
+                    fill="none"
+                    stroke="#f97316"
+                    strokeWidth={0.15}
+                    opacity={0.7}
+                  />
                 )}
                 <circle r={0.4} fill={commsUp ? "#38bdf8" : "#64748b"} />
                 <text y={-0.7} textAnchor="middle" fontSize={0.5} fill="#e2e8f0">
                   {a.id}
                 </text>
+                {!commsUp && (
+                  <text y={0.9} textAnchor="middle" fontSize={0.35} fill="#fb923c">
+                    {zLabel}
+                  </text>
+                )}
               </g>
             );
           })}

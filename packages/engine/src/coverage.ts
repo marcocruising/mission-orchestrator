@@ -3,6 +3,11 @@ import {
   DEFAULT_ENV_FACTORS,
   type EnvFactor,
 } from "./envMult.js";
+import {
+  rangeKm,
+  taskTargetToPosition3,
+  vehicleStateToPosition3,
+} from "./spatial.js";
 
 export const INFEASIBLE = Symbol("INFEASIBLE");
 export type Infeasible = typeof INFEASIBLE;
@@ -25,6 +30,8 @@ export interface VehicleState {
   x_km: number;
   y_km: number;
   depth_m: number;
+  /** Air assets: positive altitude belief fact — preferred over depth_m when set. */
+  z_m?: number;
   speed_kn: number;
   top_speed_kn: number;
 }
@@ -42,6 +49,11 @@ export function rangeMult(rangeKm: number, maxRangeKm: number, p = 0.5): Quality
   return Math.pow(1 - rangeKm / maxRangeKm, p);
 }
 
+/** 3D slant range in km — v1 body uses Euclidean distance via spatial seam. */
+export function slantRangeKm(vehicle: VehicleState, task: TaskTarget): number {
+  return rangeKm(vehicleStateToPosition3(vehicle), taskTargetToPosition3(task));
+}
+
 export { envMultMotion } from "./envMult.js";
 
 export function effectiveQuality(
@@ -51,7 +63,7 @@ export function effectiveQuality(
   p = 0.5,
   envFactors: EnvFactor[] = DEFAULT_ENV_FACTORS
 ): QualityResult {
-  const R = Math.hypot(task.target_x - vehicle.x_km, task.target_y - vehicle.y_km);
+  const R = slantRangeKm(vehicle, task);
   const rm = rangeMult(R, sensor.max_range_km, p);
   if (isInfeasible(rm)) return INFEASIBLE;
   const em = envMult(envFactors, { sensor, vehicle });

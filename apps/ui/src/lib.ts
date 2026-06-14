@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { ownAssetSearchRegion, ownAssetSearchUncertainty, searchEllipseSemiMajor, zMFromBeliefFields } from "@mission-orchestrator/engine";
 
 const url = import.meta.env.VITE_SUPABASE_URL ?? import.meta.env.SUPABASE_URL ?? "";
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.SUPABASE_ANON_KEY ?? "";
@@ -35,9 +36,7 @@ export interface PlanEvalRow {
   assumptions: string[];
 }
 
-export function searchEllipseSemiMajor(vMaxKn: number, now: number, lastContactTs: number): number {
-  return vMaxKn * Math.max(0, (now - lastContactTs) / 3600);
-}
+export { ownAssetSearchRegion, ownAssetSearchUncertainty, searchEllipseSemiMajor, zMFromBeliefFields };
 
 export function tierColor(tier: string): string {
   switch (tier) {

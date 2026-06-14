@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./spatial.js";
 export * from "./freshness.js";
 export * from "./envMult.js";
 export * from "./reconcile.js";
@@ -13,5 +14,10 @@ export * from "./summarize.js";
 export * from "./monitor.js";
 export * from "./planner.js";
 export * from "./applyPlan.js";
+export * from "./estimate.js";
+export * from "./measurement.js";
+export * from "./estimator.js";
+export * from "./track.js";
+export * from "./searchRegion.js";
 
 export const ENGINE_VERSION = "1.0.0";

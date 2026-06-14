@@ -115,11 +115,13 @@ function factNum(belief: Belief, assetId: string, field: string, fallback: numbe
 }
 
 function vehicleFromBelief(belief: Belief, asset: Asset, speedKn: number): VehicleState {
+  const zFact = getFact(belief, asset.id, "z_m");
   return {
     asset_id: asset.id,
     x_km: factNum(belief, asset.id, "x_km", 0),
     y_km: factNum(belief, asset.id, "y_km", 0),
     depth_m: factNum(belief, asset.id, "depth_m", 0),
+    z_m: typeof zFact?.value === "number" ? zFact.value : undefined,
     speed_kn: speedKn,
     top_speed_kn: asset.top_speed_kn,
   };
