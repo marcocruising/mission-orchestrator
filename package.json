@@ -1,0 +1,17 @@
+{
+  "name": "mission-orchestrator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm test:root && pnpm -r run test",
+    "lint:engine": "node scripts/lint-engine.mjs",
+    "verify": "pnpm lint:engine && pnpm build && pnpm test",
+    "test:root": "vitest run --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

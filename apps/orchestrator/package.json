@@ -1,0 +1,21 @@
+{
+  "name": "@mission-orchestrator/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "orchestrator": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mission-orchestrator/db": "workspace:*",
+    "@mission-orchestrator/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
