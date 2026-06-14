@@ -1,5 +1,9 @@
 # Mission Orchestrator — Build README (for Claude Code)
 
+> **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
+> **Phase A0 is complete** (seam retrofits). Active plan: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
+> Runbook and lessons: [HANDOVER.md](HANDOVER.md).
+
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
 and recommends the least-bad reassignment — the operator decides, the system commits. This README is
@@ -259,19 +263,22 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 
 ## Deferred register — what's deliberately simple now, and the seam it re-enters through
 
-| Deferred | Re-enters via | When |
-|---|---|---|
-| Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + objective terms (already present, =0) | S11 |
-| Spoofing / adversarial data | `SensorModel` body (conflicting report lowers Fact confidence) | S12 |
-| LLM summaries | `summary_text` cell (template → LLM call) | S13 |
-| Salinity / sea-state / fog | **another factor in `envMult` product** (same `m(context,sensor)` signature) | post-hackathon |
-| Dynamics-aware staleness | `Fact.half_life` (constant → motion-model) | post-hackathon |
-| Continuous operating points | `operating_point` handle (enum → value) | post-S10 |
-| Area / sector-blanketing coverage (tasks are points now) | new `task_constraints` kind + `Evaluator` input | post-hackathon |
-| Substitutable sensors (one compensates for another) | `coverageTask` input (relax strict `min`) | post-hackathon |
-| Real fleet/comms contention | the non-binding fleet gate body (`BIG` → real) | post-hackathon |
-| Objective unit normalization (λ's → coverage-equivalent) | `Obj` scoring | post-hackathon |
-| MIP / column-generation solver | `Planner` body (same `replan` signature) | post-hackathon |
+> **Update (post-A0):** Many seams below are **installed with stub bodies**. Full implementations follow
+> [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) Phases A1–D. Do not reshape frozen interfaces — swap bodies.
+
+| Deferred | Re-enters via | When | Seam status |
+|---|---|---|---|
+| Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + `ObjectiveTerm[]` (A0.4) | S11 / D3 | ✅ terms wired (=0) |
+| Spoofing / adversarial data | `reconcile()` body (A0.1) | S12 / D4 | ✅ seam installed |
+| LLM summaries | `summarize()` body (A0.6) | S13 / D5 | ✅ seam installed |
+| Salinity / sea-state / fog | `envMult` factor list (A0.2; full registry A4) | D1 | ✅ partial |
+| Dynamics-aware staleness | `Fact.half_life` → `MotionModel` body | D6 | ✅ field plumbed |
+| Continuous operating points | `resolveOperatingPoint` (A0.8) | D6 | ✅ seam installed |
+| Area / sector-blanketing coverage | leaf above rollup + guard test B1 | C1 | pending |
+| Substitutable sensors | `coverageTask` aggregator (A0.3) | D6 | ✅ seam installed |
+| Real fleet/comms contention | `CommsModel` + per-link utilization (A0.7 stub; A3 shape) | D2 | ✅ stub installed |
+| Objective unit normalization | `computeObjective` + config λ's (A0.4) | D6 | ✅ seam installed |
+| MIP / column-generation solver | `Planner.replan` interface (A0.5) | D6 | ✅ seam installed |
 
 ---
 
@@ -281,4 +288,5 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0. Build it, show green tests, and stop.**
+**Start with S0** for a greenfield build. **For current work**, start with **Phase A1** in
+[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md). Build one step at a time; green tests; stop between steps.

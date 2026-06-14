@@ -31,13 +31,33 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A0.4** | `objective.ts` | ✅ Done | Sum over `ObjectiveTerm[]`; move / exposure / risk penalties as pluggable terms |
 | **A0.5** | `planner.ts` | ✅ Done | `Planner.replan()` interface; `defaultPlanner` + `stubPlanner`; conformance test |
 | **A0.6** | `summarize.ts` | ✅ Done | `summarize(state, summarizer?)`; v1 = `templateSummarizer`; tick writes `summary_text` |
-| **A0.7** | `commsModel.ts` | ✅ Done | `CommsModel` + `staticCommsModel`; gate uses `fleetUsage` vs `comms_budget` |
+| **A0.7** | `commsModel.ts` | ✅ Done (stub) | Gate wired via `fleetUsage`; **A3 adds graph/route/per-link utilization** |
 | **A0.8** | `operatingPoint.ts` | ✅ Done | `resolveOperatingPoint` on `EngineInput`; enum, numeric, JSON bearing handles |
 
 **Clarifications captured in design:**
 
 - **A0.3 ≠ confidence aggregation.** A0.3 plugs in custom rules for combining **sensor-axis satisfaction** into task coverage (`cov_t`). Mission **confidence** still uses `confidenceMission` (min freshness) — a parallel injectable seam can be added later if needed.
 - **A0.4 uses the same extensibility pattern as A0.2.** Rewards and penalties are additive **terms**, not a monolithic formula. Movement cost today is `moveCountPenaltyTerm`; future terms (fuel, comms load, route distance, operating-point cost) register without changing the planner core.
+- **A0.7 comms is a stub seam only.** `staticCommsModel` + scalar `fleetUsage` wires the gate today. **Relay/path topology is NOT modeled yet** — see A3 and *Watch-outs* below. Do not implement relay logic in the planner.
+
+---
+
+## Lessons learned & watch-outs
+
+These came from the post-S10 gap analysis and Phase A0 implementation. **Read before A1+.**
+
+| # | Watch-out | Consequence if ignored |
+|---|-----------|------------------------|
+| W1 | **S4 freeze gate was missed** | Skipping A1–A4 makes estimation, env, comms imports **rewrites** not body swaps |
+| W2 | **Test behavior, not tautologies** | Golden fixtures, monotonicity, seam-swap tests — not `expect(1).toBe(1)` |
+| W3 | **A0.3 ≠ confidence** | Aggregator is for sensor-axis **coverage**; confidence still min-freshness |
+| W4 | **Use factor/term lists** | New env effects → `EnvFactor`; new costs → `ObjectiveTerm`; no core branches |
+| W5 | **Comms is a graph, not a scalar** | Relay paths need `route()` + per-link utilization in A3 — don't hack `fleetUsage` |
+| W6 | **Operating points opaque to planner** | Handles resolved only in `resolveOperatingPoint` (A0.8) |
+| W7 | **UI ellipse still ad-hoc** | Unify with `covToEllipse` in A1 — don't add a third uncertainty representation |
+| W8 | **Engine purity** | `CommsModel`, `EnvironmentContext` injected on `EngineInput` — never DB inside engine |
+| W9 | **Gate before grade** | Hard cutoffs (comms, depth, range) prune before objective scoring (P5) |
+| W10 | **One step at a time** | Green suite between steps; don't batch A1 sub-shapes without tests |
 
 ---
 
@@ -245,13 +265,24 @@ passed through `effectiveQuality` and `MotionModel.predict` without engine impor
 
 ## A3 — Comms shapes (T2.7)
 
-Supports imported **link budgets**, **latency**, and fleet bandwidth contention.
+Supports imported **link budgets**, **latency**, **multi-hop relay paths**, and per-link contention.
 
-### T2.7 — `CommsModel` + link storage
+> **A0.7 done:** `CommsModel` interface + `staticCommsModel` stub + gate wired via `fleetUsage`.
+> **A3 extends the shape** for relay topology — do not treat scalar `fleetUsage` as the final model.
+
+### T2.7 — `CommsModel` + graph storage
+
+Comms is a **graph**: nodes (assets, relays, shore, sat terminals) and directed links (hops).
+Contention is **per-link**, not a single fleet scalar.
 
 ```typescript
+interface CommsNode {
+  id: string;
+  kind: "asset" | "relay" | "shore" | "sat_terminal";
+}
+
 interface CommsLink {
-  from_id: string;       // asset or shore station
+  from_id: string;
   to_id: string;
   bandwidth_bps: number;
   delay_s: number;
@@ -259,23 +290,48 @@ interface CommsLink {
 }
 
 interface CommsModel {
+  // A0.7 — keep
   linkBudget(from: string, to: string, ts: number): CommsLink | null;
-  messageDeliveryTs(sentTs: number, from: string, to: string): number;  // sentTs + delay
-  fleetUsage(assignments: Assignment[], ts: number): number;           // aggregate load
+
+  // A3 — add for relays
+  route(from: string, to: string, ts: number): string[];  // node ids, endpoints included
+  pathDelay(sentTs: number, from: string, to: string): number;  // sum hop delays on route
+  linkUtilization(assignments: Assignment[], ts: number): Map<string, number>;  // key "from:to"
+
+  // A0.7 stub — deprecate for gate once linkUtilization lands; keep for simple demos
+  fleetUsage(assignments: Assignment[], ts: number): number;
+  messageDeliveryTs(sentTs: number, from: string, to: string): number;
 }
 ```
 
-- Supabase `comms_links` table (seed with generous defaults).
-- v1 body: `StaticCommsModel` — zero delay, unlimited bandwidth (`fleetUsage = 0`).
-- Wire into:
-  - **`checkFleetCommsGate`** — reject when `fleetUsage > budget` (budget = `BIG` in config until real).
-  - **`ingestReports`** — optional `delivery_ts = commsModel.messageDeliveryTs(…)` for delay simulation.
-  - **`freshness` / Monitor** — comms-down facts already exist; link model adds latency-aware staleness later.
+**Storage (Supabase):**
 
-**Tests:** lowering config budget rejects over-capacity plan; nonzero delay shifts effective fact `ts` in
-ingest stub; gate sees whole fleet via `fleetUsage`, not assignment count.
+- `comms_links` — edges `(from_id, to_id, bandwidth_bps, delay_s, ts)`
+- `comms_nodes` (optional) — node metadata, relay type, role
 
-**Commit boundary:** `A3: comms shapes`.
+**Gate (evolve from A0.7):**
+
+```typescript
+// v1 (A0.7, today): fleetUsage <= comms_budget
+// target (A3):  max(linkUtilization.values()) <= 1  OR  each link <= budget
+```
+
+**Consumers:**
+
+- **`checkFleetCommsGate`** — per-link or max utilization (planner/applyPlan unchanged at call site)
+- **`ingestReports`** — `pathDelay(sentTs, asset, "operator")` for multi-hop delivery
+- **Monitor** — latency-aware staleness on degraded links
+
+**Tests:**
+
+- Two-hop route: delay = sum of hop delays
+- Two assets sharing one relay link: utilization on that link rises; gate rejects when over budget
+- `fleetUsage` stub still passes when utilization map is empty (backward compat)
+
+**Anti-pattern:** encoding relay paths in planner moves or summing all traffic into one `fleetUsage`
+number without per-link keys.
+
+**Commit boundary:** `A3: comms graph shapes`.
 
 ---
 
@@ -316,7 +372,7 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] A0.8 `resolveOperatingPoint` green
 - [ ] T2.1–T2.4 estimation shapes + `tracks` migration + UI ellipse refactor
 - [ ] T2.5 MotionModel + T2.6 EnvironmentContext + DB table
-- [ ] T2.7 CommsModel + DB table + fleet gate wired
+- [ ] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables — **stub done in A0.7**
 - [ ] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
 - [ ] Kalman-readiness `test.todo` written
 - [ ] `pnpm verify` green; engine purity lint still passes
@@ -398,9 +454,10 @@ Bodies can ship in any order once Phase A + B are complete. Mapped to original R
 
 ## D2 — Imported comms data bodies (T1.8)
 
-- Replace `StaticCommsModel` with import-driven link budgets and delays.
-- `ingestReports` applies `messageDeliveryTs` so delayed packets arrive with correct `ts`.
-- Fleet gate binds when `fleetUsage > config.comms_budget`.
+- Replace `staticCommsModel` with import-driven **graph** body (`comms_links`, optional `comms_nodes`).
+- Routing: `route(asset, operator)` follows relay chain from import topology.
+- `ingestReports` applies `pathDelay` so multi-hop delayed packets arrive with correct `ts`.
+- Gate binds on **per-link utilization** (or max utilization), not scalar `fleetUsage` alone.
 
 ## D3 — Threats & risk (README S11, T1.1 body)
 
@@ -439,11 +496,12 @@ All external data enters through **two ingestion surfaces** — never directly i
 │  fog)               │
 └─────────────────────┘
 
-┌─────────────────────┐     ┌──────────────────────┐
-│ comms_links         │────▶│ CommsModel           │──▶ fleet gate
-│ (bandwidth, delay)  │     │ .linkBudget /        │──▶ ingest delivery_ts
-└─────────────────────┘     │ .fleetUsage          │──▶ Monitor staleness
-                            └──────────────────────┘
+┌─────────────────────┐     ┌──────────────────────────────┐
+│ comms_links         │────▶│ CommsModel                   │
+│ comms_nodes (opt)   │     │ .route / .pathDelay          │──▶ ingest delivery_ts
+└─────────────────────┘     │ .linkUtilization (per hop)   │──▶ fleet gate
+                            │ .linkBudget                  │──▶ Monitor staleness
+                            └──────────────────────────────┘
 
 ┌─────────────────────┐     ┌──────────────────────┐
 │ reports             │────▶│ reconcile()          │──▶ belief_facts
@@ -471,7 +529,7 @@ All external data enters through **two ingestion surfaces** — never directly i
 | T2.4 | `Track`, `Observation`, `UncertaintyRegion` | A1 | Not started |
 | T2.5 | `MotionModel` | A2 | Not started |
 | T2.6 | `EnvironmentContext`, `environment_samples` | A2 | Not started |
-| T2.7 | `CommsModel`, `comms_links` | A3 | Not started |
+| T2.7 | `CommsModel` graph, `comms_links`, `comms_nodes` | A3 | Stub (A0.7) — graph pending |
 
 ## Tier 3 — Leaves (Phase C; guards in Phase B)
 
@@ -512,7 +570,8 @@ For every step in Phase A–D:
 6. Stop, summarize, show green output, wait for confirmation.
 
 **Anti-patterns:** reshaping frozen rollup; importing DB inside engine; scalar uncertainty for tracks;
-multiplying confidence into coverage; skipping guard tests before Tier 3 bodies.
+multiplying confidence into coverage; skipping guard tests before Tier 3 bodies; **relay comms logic
+in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 ---
 
@@ -526,7 +585,7 @@ multiplying confidence into coverage; skipping guard tests before Tier 3 bodies.
 | Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → D1 bodies |
 | Deferred: dynamics-aware staleness | T2.5 → D6 body |
 | Deferred: area coverage | B1 guard → C1 body |
-| Deferred: comms contention | T2.7 + A0.7 → D2 body |
+| Deferred: comms contention | T2.7 graph + A0.7 gate → D2 body |
 | Deferred: MIP solver | A0.5 → D6 body |
 
 ---
