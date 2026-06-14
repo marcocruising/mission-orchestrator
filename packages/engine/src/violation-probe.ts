@@ -1,1 +1,0 @@
-import '@supabase/supabase-js'
