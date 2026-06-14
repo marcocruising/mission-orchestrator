@@ -1,11 +1,38 @@
 # Mission Orchestrator — Handover
 
 **Date:** June 2026  
-**Status:** S0–S10 complete · **Phase A0 complete** · **A1 complete (3D cv6 + slant range)** · **A1-revise complete** · remote Supabase live (11 tables)
+**Status:** S0–S10 · **A0** · **A1** (incl. A1-revise 3D) · **A2** complete · remote Supabase live (**12 tables**)
 
-This document summarizes what was built, how to run it, and lessons learned. The original build spec is
-[README.md](README.md). The active expansion plan is [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
-**Next phase:** A2 — MotionModel + EnvironmentContext.
+**New agent:** Read this file first, then [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § **A3**. Original build spec: [README.md](README.md).
+
+---
+
+## Agent pickup (start here)
+
+### What to do next — Phase A3 (Comms graph)
+
+1. Read EXPANSION_REGISTER **A3** — target `CommsModel` graph shape (`route`, `linkUtilization`, `pathDelay`).
+2. **Tests first** — two-hop delay sum; shared relay link utilization; gate rejects over-budget link.
+3. Create `comms_links` (+ optional `comms_nodes`) migration; apply via **Supabase MCP `apply_migration`** (not REST).
+4. Extend `packages/engine/src/commsModel.ts` — keep `fleetUsage` stub for backward compat.
+5. Wire `packages/db/src/comms.ts` loader; pass graph body into `buildEngineInputFromDb`.
+6. Run `pnpm verify` + `pnpm db:verify` (expect **12/12** tables → **14/14** after A3 if both tables added).
+7. **Stop** after A3 green; do not start Phase B until A4 is also done.
+
+### Do not skip
+
+- **A3 → A4 → Phase B** before Tier 3 bodies (volume patrol, directional sensors).
+- **Engine purity** — no DB imports inside `packages/engine`.
+- **Gate before grade** (P5) — hard cutoffs prune before scoring.
+- **One step at a time** — green suite between steps.
+
+### Quick health check
+
+```bash
+pnpm db:verify && pnpm verify && node apps/orchestrator/dist/cli.js inspect
+```
+
+Expected: **12/12** tables · **~142** tests passed (1 Kalman `test.todo`) · fleet/mission output.
 
 ---
 
@@ -39,43 +66,56 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 | **S9** | React UI: map, search ellipses, mission tiles, recommendation panel | Done |
 | **S10** | Operating-point candidates (`STATION`/`SLOW`/`FAST`) | Done |
 
-### Structural expansion — Phase A0 (seam retrofits)
+### Phase A0 — Seam retrofits
 
 | Step | Module | What it enables |
 |------|--------|-----------------|
-| **A0.1** | `reconcile.ts` | Spoofing / conflicting reports (D4) — body swap on ingest merge |
-| **A0.2** | `envMult.ts` | Salinity, sea-state, fog factors (D1) — product over factor list |
-| **A0.3** | `coverage.ts` | Substitutable sensors (D6) — injectable axis aggregator |
-| **A0.4** | `objective.ts` | Threats/risk terms, fuel/comms costs (D3/D6) — additive `ObjectiveTerm[]` |
-| **A0.5** | `planner.ts` | MIP / column-generation solver (D6) — `Planner.replan()` interface |
+| **A0.1** | `reconcile.ts` | Spoofing / conflicting reports (D4) |
+| **A0.2** | `envMult.ts` | Salinity, sea-state, fog factors (D1) — factor list |
+| **A0.3** | `coverage.ts` | Substitutable sensors (D6) — injectable aggregator |
+| **A0.4** | `objective.ts` | Threats/risk, fuel/comms costs (D3/D6) — `ObjectiveTerm[]` |
+| **A0.5** | `planner.ts` | MIP / column-generation (D6) — `Planner.replan()` |
 | **A0.6** | `summarize.ts` | LLM narration (D5) — swappable `Summarizer` |
-| **A0.7** | `commsModel.ts` | Fleet comms gate (D2) — `CommsModel` stub; gate uses `fleetUsage` |
-| **A0.8** | `operatingPoint.ts` | Directional sensors (C2) — opaque `resolveOperatingPoint` |
+| **A0.7** | `commsModel.ts` | Fleet comms gate (D2) — **stub**; A3 adds graph |
+| **A0.8** | `operatingPoint.ts` | Directional sensors (C2) — opaque resolver |
 
-### Structural expansion — Phase A1 (estimation + 3D spatial)
+### Phase A1 — Estimation + 3D spatial (incl. A1-revise)
 
 | Module | What shipped |
 |--------|----------------|
-| `spatial.ts` | `Position3`, z-up adapters, `StateLayout`, `slantRangeM`, `rangeKm` |
-| `estimate.ts` | cv6 `Estimate`, `migrateEstimate`, `zUncertainty`, `covToEllipse` |
-| `measurement.ts` | `position3Measurement`, `horizontalBearingMeasurement`, meters |
+| `spatial.ts` | `Position3`, z-up adapters, `slantRangeM`, `rangeKm` |
+| `estimate.ts` | cv6 `Estimate`, `migrateEstimate`, `zUncertainty` |
+| `measurement.ts` | `position3Measurement`, `horizontalBearingMeasurement` (meters) |
 | `estimator.ts` | 6D `FixedGainEstimator` |
 | `coverage.ts` | `slantRangeKm` via spatial seam |
-| `searchRegion.ts` | `ownAssetSearchUncertainty` (6D reachable set + z σ) |
-| `track.ts` / `tracks` table | External contact tracks |
-| UI | `ownAssetSearchUncertainty`, z label on comms loss |
+| `searchRegion.ts` | `ownAssetSearchUncertainty` — MotionModel-propagated 6D reachable set |
+| `track.ts` / `tracks` | External contact tracks; `migrateEstimate` on DB load |
+| UI | Map ellipse + z σ label on comms loss |
 
-~133 tests green (1 Kalman `test.todo`).
+Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
-### Not started
+### Phase A2 — Motion + environment shapes
 
-| Track | Scope |
+| Module | What shipped |
+|--------|----------------|
+| `motionModel.ts` | `MotionModel`, `ConstantVelocityModel`, `propagateState`, `initialLostContactState` |
+| `environmentContext.ts` | `EnvironmentContext`, `staticEnvironmentContext`, `sampleEnvironmentContext`, `buildEnvironmentContext` |
+| `EngineInput` | + `motionModel`, `environmentContext` (injected each tick) |
+| `effectiveQuality` | Plumbs `environmentContext` into `envMult` ctx (factors still motion-only until A4) |
+| `packages/db/environment.ts` | `loadEnvironmentContext()` from `environment_samples` |
+| Supabase | `environment_samples` table (applied via MCP `a2_environment_samples`) |
+
+---
+
+## Not started (ordered)
+
+| Phase | Scope |
 |-------|--------|
-| **A2–A4** | MotionModel, EnvironmentContext, comms graph, env factor registry |
+| **A3** | Comms graph — `route`, `linkUtilization`, `comms_links` / `comms_nodes` |
+| **A4** | EnvMult factor registry — stub salinity / sea-state / fog factors |
 | **B** | Tier 3 guard tests (rollup leaf-agnostic) |
-| **C** | Area patrol, directional sensor bodies |
-| **D** | Imported data, S11–S13, smart bodies behind seams |
-| **S11–S13** | Threats/risk, spoofing body, LLM narration body (mapped to D3–D5) |
+| **C** | Volume patrol (C1), directional sensors (C2) |
+| **D** | Imported data bodies, S11–S13 (threats, spoofing, LLM) |
 
 ---
 
@@ -83,47 +123,46 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 
 ```
 packages/engine/     Pure logic — zero DB deps, Vitest property tests
-  spatial.ts         Position3, z-up adapters, slant range (A1)
-  estimate.ts        cv6 Estimate, migrateEstimate, zUncertainty
-  measurement.ts     position3Measurement, horizontalBearingMeasurement
-  estimator.ts       6D FixedGainEstimator
-  coverage.ts        effectiveQuality — 3D slant range via slantRangeKm
-  searchRegion.ts    ownAssetSearchUncertainty (6D reachable set)
-  track.ts           External contact tracks
-  reconcile.ts       Ingest merge seam (A0.1)
-  envMult.ts         Extensible environment factors (A0.2)
-  objective.ts       Extensible plan scoring terms (A0.4)
-  commsModel.ts      Comms stub — gate wired (A0.7)
-  operatingPoint.ts  Opaque operating-point resolver (A0.8)
-  summarize.ts       Alert narration seam (A0.6)
-packages/db/         Supabase client, belief/mission loaders, tracks loader
+  spatial.ts         Position3, z-up, slant range (A1)
+  estimate.ts        cv6 Estimate, migrateEstimate (A1)
+  motionModel.ts     ConstantVelocityModel, propagateState (A2)
+  environmentContext.ts  FieldKind, sample(), static/grid bodies (A2)
+  coverage.ts        slantRangeKm, effectiveQuality + env ctx (A1/A2)
+  searchRegion.ts    ownAssetSearchUncertainty via MotionModel (A1/A2)
+  commsModel.ts      Comms stub — extend graph in A3
+  …                  reconcile, envMult, objective, planner, summarize, operatingPoint
+packages/db/         Supabase loaders
+  missions.ts        buildEngineInputFromDb (belief, missions, env ctx, …)
+  environment.ts     loadEnvironmentContext (A2)
+  tracks.ts          parseTrackRow + migrateEstimate (A1)
 apps/orchestrator/   CLI: inspect | sim | tick | apply
 apps/ui/             Vite + React Realtime dashboard
-supabase/
-  migrations/        S0–A1 DDL incl. tracks (RLS enabled)
-  seed.sql           Demo fleet, missions, config tunables
-  bootstrap.sql      Combined schema+seed for SQL Editor (idempotent)
-scripts/
-  lint-engine.mjs    CI guardrail — fails if engine imports DB or world_truth
-  verify-supabase.mjs  Checks 11 tables + anon RLS via .env keys
-  setup-db.mjs       Applies migrations via DATABASE_URL (optional)
-A1_REVISE_3D.md      A1 3D spatial upgrade spec (complete)
-EXPANSION_REGISTER.md  Canonical plan — phases, tiers, watch-outs
+supabase/migrations/ S0–A2 DDL (local source of truth; apply remote via MCP)
+scripts/             lint-engine.mjs, verify-supabase.mjs, load-env.mjs
+EXPANSION_REGISTER.md  Canonical plan — **A3 next**
+A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 ```
 
 ---
 
 ## Remote Supabase
 
-**Project:** `wyeryyczsdezyvrsqxep` (matches `.env` and Cursor Supabase MCP after re-link)
+**Project:** `wyeryyczsdezyvrsqxep` (must match `.env` **and** Cursor Supabase MCP)
 
-- 11/11 tables reachable via REST (includes `tracks`)
-- RLS enabled; anon can read; service role writes
-- Demo seed: 2 assets, 2 missions, 2 assignments, 13 config keys
+| Channel | Use for |
+|---------|---------|
+| **Supabase MCP** | DDL — `apply_migration`, `list_tables`, `list_migrations` |
+| **`.env` REST keys** | Runtime — orchestrator, UI, `pnpm db:verify` |
+
+**MCP migrations applied:** `s0_config` … `a1_tracks`, `a2_environment_samples`
+
+- **12/12** tables reachable via REST
+- RLS enabled; anon read; service role writes
+- Demo seed: 2 assets, 2 missions, 2 assignments, 13 config keys; `environment_samples` empty (defaults via `staticEnvironmentContext`)
 
 ```bash
-pnpm db:verify    # REST check — expect 11/11 tables
-pnpm db:setup     # Applies migrations via DATABASE_URL (optional path)
+pnpm db:verify    # REST — expect 12/12 tables
+pnpm verify       # lint + build + ~142 tests
 ```
 
 ---
@@ -132,47 +171,28 @@ pnpm db:setup     # Applies migrations via DATABASE_URL (optional path)
 
 ### Prerequisites
 
-- Node 22+, pnpm 9+
-- `.env` with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `VITE_*` copies (see `.env.example`)
+Node 22+, pnpm 9+, `.env` with `SUPABASE_URL`, keys, and `VITE_*` copies (see `.env.example`).
 
 ### One-time
 
 ```bash
-pnpm install
-pnpm build
-pnpm db:verify      # expect 11/11 tables
+pnpm install && pnpm build && pnpm db:verify
 ```
 
-### Automated tests
+### Terminal demo
 
 ```bash
-pnpm verify         # guardrail + build + ~133 tests
-```
+node apps/orchestrator/dist/cli.js sim 0 && node apps/orchestrator/dist/cli.js tick 0
+node apps/orchestrator/dist/cli.js inspect
 
-### Terminal demo (main loop)
-
-```bash
-node apps/orchestrator/dist/cli.js sim 0    # ingest sim reports
-node apps/orchestrator/dist/cli.js tick 0   # recompute state, monitor, plan
-node apps/orchestrator/dist/cli.js inspect  # print fleet + mission tiers
-
-node apps/orchestrator/dist/cli.js sim 1 && node apps/orchestrator/dist/cli.js tick 1
-
-# Comms-cut scenario (tick 2 timeline drops uuv-alpha reports)
+# Comms-cut scenario (tick 2)
 node apps/orchestrator/dist/cli.js sim 2 && node apps/orchestrator/dist/cli.js tick 2
 ```
 
 ### UI
 
 ```bash
-pnpm --filter @mission-orchestrator/ui dev
-# → http://localhost:5173
-```
-
-### Offline (no Supabase)
-
-```bash
-SUPABASE_URL= node apps/orchestrator/dist/cli.js inspect 1
+pnpm --filter @mission-orchestrator/ui dev   # → http://localhost:5173
 ```
 
 ---
@@ -181,8 +201,9 @@ SUPABASE_URL= node apps/orchestrator/dist/cli.js inspect 1
 
 ```
 Simulator → reports → ingestReports → reconcile() → belief_facts
-                                              ↓
-assignments + missionDefs + belief + commsModel + resolveOperatingPoint
+environment_samples ──→ loadEnvironmentContext() ──→ EnvironmentContext
+                                                              ↓
+assignments + missionDefs + belief + commsModel + motionModel + environmentContext
                               ↓
                     recomputeMissionStates (PURE)
                               ↓
@@ -191,158 +212,62 @@ assignments + missionDefs + belief + commsModel + resolveOperatingPoint
               applyPlan (re-validate gates incl. CommsModel) → assignments
 ```
 
-**Invariants enforced:**
+**Invariants (CI enforces #1, #2, #6):**
 
-1. Engine reads `belief`, never `world_truth` (CI lint)
-2. State engine is pure — `(belief, assignments, missionDefs, now)` + injected models
-3. Capability is a sensor vector, not a scalar
+1. Engine reads `belief`, never `world_truth`
+2. State engine is pure — `now` always a parameter; models injected on `EngineInput`
+3. Capability is a sensor vector
 4. Do-nothing plan always evaluated
 5. All assignment changes via `applyPlan`
 6. Coverage and confidence never multiplied
-7. New fields additive only (migration discipline)
+7. New fields additive only
 
 ---
 
-## Test run results (last session)
+## Test results (last session)
 
 | Check | Result |
 |-------|--------|
-| `pnpm db:verify` | 11/11 tables, anon RLS OK |
-| `pnpm verify` | ~133 tests passed |
+| `pnpm db:verify` | 12/12 tables, anon RLS OK |
+| `pnpm verify` | 142 passed, 1 todo (Kalman-readiness) |
 | Engine purity lint | Passed |
 
-**Demo note:** With default seed, `mission-track` can sit AT_RISK while salience stays below σ=0.4 — alerts/plans may not fire until seed or timeline is tuned (see learnings below).
+**Demo note:** Default seed may keep salience below σ=0.4 — tune seed or timeline for alert→plan demo.
 
 ---
 
-## Learnings — original build
+## Learnings (read before coding)
 
-### 1. Supabase MCP vs `.env` are separate channels
-
-- REST keys authenticate HTTP API; they cannot run DDL.
-- Supabase MCP connects to a specific project for migrations; it does not read `.env`.
-- **Fix:** Re-link MCP to the same project ref as `SUPABASE_URL`.
-
-### 2. `freshness(H) = 0.5` vs README formula
-
-Implemented as half-life decay `0.5^(Δt / H)`, not `exp(−Δt / H)`.
-
-### 3. Engine purity guardrail is essential
-
-`scripts/lint-engine.mjs` — do not remove. Main enforcement of P1/P2.
-
-### 4. Root script is `verify`, not `ci`
-
-`pnpm ci` is reserved by pnpm.
-
-### 5. Sim re-runs need idempotency
-
-`world_truth` PK `(tick, asset_id)` — re-running `sim 0` throws duplicate key.
-
-### 6. Salience gate tuning matters for demo UX
-
-Tune `W_m`, `window_end_s`, `sigma`, or comms-cut timing to trigger alert→plan→Accept loop.
-
-### 7. `.env` auto-load
-
-Orchestrator CLI imports `scripts/load-env.mjs`. Vite UI reads repo-root `.env`.
-
-### 8. RLS from day one
-
-All tables have RLS; UI uses anon key for read-only Realtime.
+1. **Supabase MCP vs `.env`** — MCP for DDL; REST for runtime. Re-link MCP if project ref drifts from `SUPABASE_URL`.
+2. **`freshness(H) = 0.5`** — implemented as `0.5^(Δt/H)`, not `exp(−Δt/H)`.
+3. **Engine purity lint** (`scripts/lint-engine.mjs`) — do not remove.
+4. **Root script is `verify`**, not `ci` (pnpm reserves `ci`).
+5. **Sim re-runs** — `world_truth` PK duplicates; needs upsert/`--force` (known gap).
+6. **A0.3 ≠ confidence** — aggregator is sensor-axis coverage; confidence is min freshness.
+7. **Comms is a graph (W5)** — do not hack relay logic into planner or scalar `fleetUsage` alone.
+8. **3D spatial (A1)** — `Position3` + z-up; **`z_m = -depth_m` only in `spatial.ts`**.
+9. **Operating points opaque to planner** — resolved only in `resolveOperatingPoint`.
+10. **One step at a time** — tests first, green suite, stop between steps.
 
 ---
 
-## Learnings — expansion work (watch-outs)
+## Known gaps (non-blocking)
 
-### 9. The S4 freeze gate was missed — retroactively fixing with Phase A
-
-S4–S10 shipped before estimation, env, and comms **shapes** were installed. Phase A0 retrofits cheap
-seams; A1–A4 installs remaining shapes. **Do not skip A1–A4** and jump to imported data or Tier 3 bodies.
-
-### 10. Test behavior, not tautologies
-
-Each A0 step uses golden fixtures, monotonicity checks, and seam-swap tests — not `expect(1).toBe(1)`.
-Keep this discipline in A1+.
-
-### 11. A0.3 ≠ confidence aggregation
-
-`coverageTask` aggregator combines **sensor-axis satisfaction** into task coverage. Mission **confidence**
-still uses `confidenceMission` (min freshness). Do not conflate them.
-
-### 12. Extensibility pattern: factor lists and term lists
-
-- **Environment → sensors:** `envMult(factors[], ctx)` (A0.2)
-- **Plan scoring:** `computeObjective(ctx, terms[])` (A0.4)
-
-Use the same pattern for new graded effects — do not add one-off branches in planner or coverage core.
-
-### 13. Comms: scalar `fleetUsage` is a stub, not the final model
-
-A0.7 wires the gate to `CommsModel`. Real relay topology (asset → relay → sat → shore) needs a **graph**
-in **A3**: `route(from, to)`, per-**link** utilization, `pathDelay` summed over hops. **Do not** encode
-relay logic in the planner or by hacking `fleetUsage` as a single number — that becomes technical debt.
-See EXPANSION_REGISTER A3 for the target shape.
-
-### 14. Operating points must stay opaque to the planner
-
-Planner emits handle strings; only `resolveOperatingPoint` interprets them (enum, numeric, JSON bearing).
-Directional sensors (C2) add `bearing_deg` without planner changes.
-
-### 15. UI search ellipse unified with engine (A1)
-
-`ownAssetSearchUncertainty` in `searchRegion.ts` feeds the map ellipse and z σ label on comms loss.
-
-### 16. 3D spatial model (A1 — complete)
-
-Engine uses **`Position3 { x_m, y_m, z_m }`**, **z-up** (altitude positive, depth negative). Legacy DB `depth_m` converts via **`z_m = -depth_m`** in `spatial.ts` only. See [A1_REVISE_3D.md](A1_REVISE_3D.md).
-
-### 17. Uncommitted setup scripts (optional commit)
-
-These may still exist untracked: `scripts/load-env.mjs`, `verify-supabase.mjs`, `setup-db.mjs`,
-`supabase/bootstrap.sql`, package.json db scripts.
+1. **A3–A4** — remaining Phase A shapes (see EXPANSION_REGISTER)
+2. **Alert demo tuning** — salience ≥ 0.4 with default seed
+3. **UI Accept** — wire to orchestrator API / Edge Function
+4. **Sim idempotency** — upsert or `--force`
+5. **UAV seed scenario** — `z_m` belief fact for air-domain demo
 
 ---
 
-## Known gaps / recommended next work
-
-1. **Phase A2** — `MotionModel` on 6D state; `EnvironmentContext.sample(kind, Position3)`
-2. **Phase A3** — Comms graph (`route`, per-link utilization)
-3. **Phase A4** — Full env factor registry (salinity, sea-state, fog stubs)
-4. **Phase B** — Rollup-is-leaf-agnostic guard before **volume patrol (C1)**
-5. **Trigger alert demo** — tune seed so salience ≥ 0.4
-6. **Wire UI Accept** — API route or Edge Function for `applyPlan`
-7. **Sim idempotency** — upsert or `--force` for replay
-8. **Seed UAV scenario** — `z_m` fact positive for air-domain demo
-
----
-
-## Key files for the next developer
+## Key files for A3
 
 | File | Purpose |
 |------|---------|
-| **`EXPANSION_REGISTER.md`** | **Next agent start here** — Phase A2 MotionModel |
-| `A1_REVISE_3D.md` | A1 3D spatial spec (complete) |
-| `packages/engine/src/spatial.ts` | Position3, adapters, slant range |
-| `packages/engine/src/estimate.ts` | cv6 Estimate / migrateEstimate |
-| `packages/engine/src/coverage.ts` | effectiveQuality — slant range |
-| `packages/engine/src/searchRegion.ts` | 6D search uncertainty |
-| `packages/engine/src/objective.ts` | Plan scoring terms |
-| `packages/engine/src/planner.ts` | `Planner.replan`, candidate generation |
-| `packages/engine/src/commsModel.ts` | Comms stub (extend in A3) |
-| `packages/engine/src/operatingPoint.ts` | Opaque operating-point resolver |
-| `packages/engine/src/reconcile.ts` | Belief merge seam |
-| `packages/engine/src/summarize.ts` | Alert narration seam |
-| `apps/orchestrator/src/tick.ts` | Full tick loop |
-| `packages/db/src/missions.ts` | DB → EngineInput adapter |
+| **`EXPANSION_REGISTER.md` § A3** | Target CommsModel graph shape + tests |
+| `packages/engine/src/commsModel.ts` | Extend interface — keep call sites frozen |
+| `packages/engine/src/stateEngine.ts` | `checkFleetCommsGate` — evolve to per-link utilization |
+| `packages/db/src/missions.ts` | `buildEngineInputFromDb` — add comms loader |
+| `packages/engine/src/applyPlan.ts` | `buildEngineInput` defaults |
 | `scripts/lint-engine.mjs` | Purity guardrail |
-
----
-
-## Quick health check
-
-```bash
-pnpm db:verify && pnpm verify && node apps/orchestrator/dist/cli.js inspect
-```
-
-All green + fleet/mission output = healthy.

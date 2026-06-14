@@ -10,6 +10,7 @@ import type {
 } from "@mission-orchestrator/engine";
 import { buildEngineInput } from "@mission-orchestrator/engine";
 import { loadBelief } from "./belief.js";
+import { loadEnvironmentContext } from "./environment.js";
 
 export async function loadAssets(client: SupabaseClient): Promise<Asset[]> {
   const { data, error } = await client.from("assets").select("*");
@@ -118,7 +119,7 @@ export async function buildEngineInputFromDb(
   client: SupabaseClient,
   now: number
 ): Promise<EngineInput> {
-  const [belief, assets, sensors, missions, assignments, config, covBaselines] =
+  const [belief, assets, sensors, missions, assignments, config, covBaselines, environmentContext] =
     await Promise.all([
       loadBelief(client),
       loadAssets(client),
@@ -127,6 +128,7 @@ export async function buildEngineInputFromDb(
       loadAssignments(client),
       loadConfig(client),
       loadCovBaselines(client),
+      loadEnvironmentContext(client, now),
     ]);
 
   return buildEngineInput({
@@ -138,6 +140,7 @@ export async function buildEngineInputFromDb(
     config,
     now,
     covBaselines,
+    environmentContext,
   });
 }
 

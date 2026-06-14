@@ -7,6 +7,8 @@ import {
   defaultResolveOperatingPoint,
 } from "./stateEngine.js";
 import { staticCommsModel } from "./commsModel.js";
+import { staticEnvironmentContext } from "./environmentContext.js";
+import { defaultConstantVelocityModel } from "./motionModel.js";
 import { applyMovesToAssignments, type Plan } from "./planner.js";
 export type { Plan, PlanMove } from "./planner.js";
 
@@ -53,10 +55,15 @@ export function applyPlan(
 }
 
 export function buildEngineInput(
-  partial: Omit<EngineInput, "resolveOperatingPoint" | "commsModel" | "config"> & {
+  partial: Omit<
+    EngineInput,
+    "resolveOperatingPoint" | "commsModel" | "environmentContext" | "motionModel" | "config"
+  > & {
     config?: Partial<EngineInput["config"]>;
     resolveOperatingPoint?: EngineInput["resolveOperatingPoint"];
     commsModel?: EngineInput["commsModel"];
+    environmentContext?: EngineInput["environmentContext"];
+    motionModel?: EngineInput["motionModel"];
   }
 ): EngineInput {
   return {
@@ -64,5 +71,7 @@ export function buildEngineInput(
     config: { ...DEFAULT_CONFIG, ...partial.config },
     resolveOperatingPoint: partial.resolveOperatingPoint ?? defaultResolveOperatingPoint,
     commsModel: partial.commsModel ?? staticCommsModel,
+    environmentContext: partial.environmentContext ?? staticEnvironmentContext(partial.now),
+    motionModel: partial.motionModel ?? defaultConstantVelocityModel,
   };
 }

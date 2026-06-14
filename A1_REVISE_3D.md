@@ -1,7 +1,7 @@
-# A1-revise — 3D spatial model (agent pickup)
+# A1-revise — 3D spatial model (reference — COMPLETE)
 
 **Status:** **COMPLETE** (June 2026)  
-**Prerequisite:** Phase A1 initial landed (2D `cv4` estimation — upgraded)  
+**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) Phase **A3** (A2 done)  
 **Commit target:** `A1-revise: 3D spatial model (cv6, slant range, z-up adapter)`
 
 Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
@@ -76,7 +76,7 @@ Air assets: use **`z_m` belief fact** (positive). Do not write conflicting `dept
 5. **`searchRegion.ts` + UI + `tracks.ts`** — 6D search uncertainty, `migrateEstimate` on load ✅  
 6. **Docs** — EXPANSION_REGISTER / HANDOVER / README synced ✅  
 
-Run after each step: `pnpm verify` · expect engine purity lint pass · `pnpm db:verify` (11 tables incl. `tracks`)
+Run after each step: `pnpm verify` · `pnpm db:verify` (12 tables as of A2).
 
 ---
 
@@ -93,7 +93,7 @@ Run after each step: `pnpm verify` · expect engine purity lint pass · `pnpm db
 | DB loader | `packages/db/src/tracks.ts` | load/upsert tracks |
 | UI | `apps/ui/src/App.tsx` | `ownAssetSearchRegion` from engine |
 
-Tests: ~133 passing with 1 Kalman `test.todo` (June 2026 session).
+Tests: ~142 passing with 1 Kalman `test.todo` (June 2026 session).
 
 ---
 

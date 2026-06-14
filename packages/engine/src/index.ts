@@ -19,5 +19,7 @@ export * from "./measurement.js";
 export * from "./estimator.js";
 export * from "./track.js";
 export * from "./searchRegion.js";
+export * from "./environmentContext.js";
+export * from "./motionModel.js";
 
 export const ENGINE_VERSION = "1.0.0";

@@ -28,6 +28,7 @@ const tables = [
   "alert_log",
   "plan_eval",
   "tracks",
+  "environment_samples",
 ];
 
 let ok = 0;

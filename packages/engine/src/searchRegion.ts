@@ -1,8 +1,14 @@
 import { covToEllipse, zUncertainty, type UncertaintyRegion } from "./estimate.js";
-import { StateLayout, kmToM, M_PER_KM } from "./spatial.js";
+import { kmToM, M_PER_KM } from "./spatial.js";
+import {
+  defaultConstantVelocityModel,
+  initialLostContactState,
+  propagateState,
+  type MotionModel,
+} from "./motionModel.js";
 
 /** Knots → m/s (1 kn = 1852 m / 3600 s). */
-const KNOTS_TO_M_S = 1852 / 3600;
+export const KNOTS_TO_M_S = 1852 / 3600;
 
 /** Unified own-asset reachable-set uncertainty (horizontal ellipse + vertical σ). */
 export interface SearchUncertainty {
@@ -11,33 +17,22 @@ export interface SearchUncertainty {
   z_sigma_m: number;
 }
 
-function buildReachableCov6(
-  vMaxKn: number,
-  dtSeconds: number,
-  k: number,
+function horizontalCovWithAspect(
+  propagated: number[][],
   minorAxisRatio: number
 ): number[][] {
-  const dtHours = dtSeconds / 3600;
-  const semiMajorKm = vMaxKn * dtHours;
-  const semiMinorKm = semiMajorKm * minorAxisRatio;
-  const lambdaMajorM2 = (semiMajorKm * M_PER_KM / k) ** 2;
-  const lambdaMinorM2 = (semiMinorKm * M_PER_KM / k) ** 2;
-  const vMaxMs = vMaxKn * KNOTS_TO_M_S;
-  const zSigmaM = Math.max(vMaxMs * dtSeconds / k, 1);
-  const velVar = 1e-6;
-  const cov = Array.from({ length: 6 }, () => Array(6).fill(0));
-  cov[StateLayout.X][StateLayout.X] = lambdaMajorM2;
-  cov[StateLayout.Y][StateLayout.Y] = lambdaMinorM2;
-  cov[StateLayout.Z][StateLayout.Z] = zSigmaM * zSigmaM;
-  cov[StateLayout.VX][StateLayout.VX] = velVar;
-  cov[StateLayout.VY][StateLayout.VY] = velVar;
-  cov[StateLayout.VZ][StateLayout.VZ] = velVar;
+  const cov = propagated.map((row) => [...row]);
+  const xyMean = (cov[0][0] + cov[1][1]) / 2;
+  cov[0][0] = xyMean;
+  cov[1][1] = xyMean * minorAxisRatio * minorAxisRatio;
+  cov[0][1] = 0;
+  cov[1][0] = 0;
   return cov;
 }
 
 /**
- * Own-asset search uncertainty when contact is lost — full 6D reachable set projected
- * to horizontal ellipse + z σ (same renderer path as external track estimates).
+ * Own-asset search uncertainty when contact is lost — 6D reachable set via MotionModel,
+ * projected to horizontal ellipse + z σ (same renderer path as external track estimates).
  */
 export function ownAssetSearchUncertainty(
   x_km: number,
@@ -47,13 +42,16 @@ export function ownAssetSearchUncertainty(
   now: number,
   lastContactTs: number,
   k = 2,
-  minorAxisRatio = 0.4
+  minorAxisRatio = 0.4,
+  motionModel: MotionModel = defaultConstantVelocityModel
 ): SearchUncertainty {
   const dtSeconds = Math.max(0, now - lastContactTs);
-  const cov = buildReachableCov6(vMaxKn, dtSeconds, k, minorAxisRatio);
-  const mean = [kmToM(x_km), kmToM(y_km), z_m, 0, 0, 0];
-  const region = covToEllipse(cov, mean, k);
-  const z = zUncertainty(mean, cov);
+  const vMaxMs = vMaxKn * KNOTS_TO_M_S;
+  const initial = initialLostContactState(kmToM(x_km), kmToM(y_km), z_m, vMaxMs);
+  const propagated = propagateState(initial.mean, initial.cov, dtSeconds, motionModel);
+  const displayCov = horizontalCovWithAspect(propagated.cov, minorAxisRatio);
+  const region = covToEllipse(displayCov, propagated.mean, k);
+  const z = zUncertainty(propagated.mean, propagated.cov);
   return { region, z_m: z.z_m, z_sigma_m: z.sigma_m };
 }
 
@@ -68,7 +66,8 @@ export function ownAssetSearchRegion(
   now: number,
   lastContactTs: number,
   k = 2,
-  minorAxisRatio = 0.4
+  minorAxisRatio = 0.4,
+  motionModel?: MotionModel
 ): UncertaintyRegion {
   return ownAssetSearchUncertainty(
     x_km,
@@ -78,7 +77,8 @@ export function ownAssetSearchRegion(
     now,
     lastContactTs,
     k,
-    minorAxisRatio
+    minorAxisRatio,
+    motionModel
   ).region;
 }
 
@@ -93,3 +93,10 @@ export function zMFromBeliefFields(fields: { z_m?: unknown; depth_m?: unknown })
   if (typeof fields.depth_m === "number") return -fields.depth_m;
   return 0;
 }
+
+/** Approximate horizontal reach in km (v_max · Δt) — display helper only. */
+export function horizontalReachKm(vMaxKn: number, dtSeconds: number): number {
+  return vMaxKn * (dtSeconds / 3600);
+}
+
+export { M_PER_KM };

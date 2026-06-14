@@ -14,6 +14,8 @@ import {
 import { freshness } from "./freshness.js";
 import type { CommsModel } from "./commsModel.js";
 import type { OperatingPointResolver } from "./operatingPoint.js";
+import type { EnvironmentContext } from "./environmentContext.js";
+import type { MotionModel } from "./motionModel.js";
 
 export interface TaskDemand {
   sensor: string;
@@ -107,6 +109,10 @@ export interface EngineInput {
   resolveOperatingPoint: OperatingPointResolver;
   /** Comms link model for fleet gate and ingest delay (T2.7 / A0.7). */
   commsModel: CommsModel;
+  /** Gridded environmental fields for envMult / motion (T2.6 / A2). */
+  environmentContext: EnvironmentContext;
+  /** Dead-reckoning / search-region propagation (T2.5 / A2). */
+  motionModel: MotionModel;
 }
 
 function factNum(belief: Belief, assetId: string, field: string, fallback: number): number {
@@ -181,7 +187,9 @@ export function computeTaskCoverage(
         sensorSpec(sensor),
         { target_x: task.target_x, target_y: task.target_y, target_depth_m: task.target_depth_m },
         vehicle,
-        input.config.p
+        input.config.p,
+        undefined,
+        input.environmentContext
       );
       if (isInfeasible(q)) return { cov_t: 0, freshnessValues: [], infeasible: true };
       qualities.push(q);

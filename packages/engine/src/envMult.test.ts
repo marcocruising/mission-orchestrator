@@ -6,6 +6,7 @@ import {
   type EnvMultContext,
 } from "./envMult.js";
 import { envMultMotion } from "./envMult.js";
+import { staticEnvironmentContext } from "./environmentContext.js";
 import { effectiveQuality, slantRangeKm, type SensorSpec, type VehicleState } from "./coverage.js";
 
 const passiveAcoustic: SensorSpec = {
@@ -112,5 +113,12 @@ describe("effectiveQuality uses envMult factor list (A0.2 regression)", () => {
     const slow = effectiveQuality(passiveAcoustic, target, { ...vehicle, speed_kn: 1 });
     const fast = effectiveQuality(passiveAcoustic, target, { ...vehicle, speed_kn: 7 });
     expect(slow as number).toBeGreaterThan(fast as number);
+  });
+
+  it("environment context is plumbed through effectiveQuality (A2 seam)", () => {
+    const env = staticEnvironmentContext(100, { salinity_psu: 35 });
+    const withEnv = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, DEFAULT_ENV_FACTORS, env);
+    const baseline = effectiveQuality(passiveAcoustic, target, vehicle);
+    expect(withEnv as number).toBeCloseTo(baseline as number, 10);
   });
 });

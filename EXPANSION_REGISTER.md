@@ -1,8 +1,9 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 complete · **Phase A0 complete (A0.1–A0.8)** · **A1 complete (3D cv6 + slant range)** · **A1-revise complete** · A2–A4 + B–D pending
+**Status:** S0–S10 · **A0** · **A1** (3D cv6) · **A2** complete · **A3–A4 + B–D pending**
 
-> **Agent pickup for active work:** [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) Phase **A2** — MotionModel + EnvironmentContext.
+> **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* → then **A3 below**.
+> Health: `pnpm db:verify` (12/12) · `pnpm verify` (~142 tests).
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -42,6 +43,18 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 - **A0.4 uses the same extensibility pattern as A0.2.** Rewards and penalties are additive **terms**, not a monolithic formula. Movement cost today is `moveCountPenaltyTerm`; future terms (fuel, comms load, route distance, operating-point cost) register without changing the planner core.
 - **A0.7 comms is a stub seam only.** `staticCommsModel` + scalar `fleetUsage` wires the gate today. **Relay/path topology is NOT modeled yet** — see A3 and *Watch-outs* below. Do not implement relay logic in the planner.
 
+### Progress log (Phase A2 — motion + environment)
+
+| Step | Module / table | Status | Notes |
+|------|----------------|--------|-------|
+| **A2 / T2.5** | `motionModel.ts` | ✅ Done | `ConstantVelocityModel`, `propagateState`; search region uses propagated Q |
+| **A2 / T2.6** | `environmentContext.ts` | ✅ Done | `staticEnvironmentContext`, `sampleEnvironmentContext`, `buildEnvironmentContext` |
+| **A2 / T2.6** | `environment_samples` | ✅ Done | Migration `a2_environment_samples` on remote via Supabase MCP |
+| **A2 wire** | `EngineInput` | ✅ Done | + `motionModel`, `environmentContext`; `loadEnvironmentContext` in db adapter |
+| **A2 wire** | `effectiveQuality` | ✅ Done | Passes `environmentContext` into `envMult` ctx (A4 adds consuming factors) |
+
+**Commit boundary:** `A2: motion and environment shapes`.
+
 ---
 
 ## Lessons learned & watch-outs
@@ -56,7 +69,7 @@ These came from the post-S10 gap analysis and Phase A0 implementation. **Read be
 | W4 | **Use factor/term lists** | New env effects → `EnvFactor`; new costs → `ObjectiveTerm`; no core branches |
 | W5 | **Comms is a graph, not a scalar** | Relay paths need `route()` + per-link utilization in A3 — don't hack `fleetUsage` |
 | W6 | **Operating points opaque to planner** | Handles resolved only in `resolveOperatingPoint` (A0.8) |
-| W7 | **UI ellipse still ad-hoc** | Unify with `covToEllipse` in A1 — don't add a third uncertainty representation |
+| W7 | **UI ellipse unified with engine** | Done in A1/A2 — `ownAssetSearchUncertainty` + MotionModel propagation |
 | W8 | **Engine purity** | `CommsModel`, `EnvironmentContext` injected on `EngineInput` — never DB inside engine |
 | W9 | **Gate before grade** | Hard cutoffs (comms, depth, range) prune before objective scoring (P5) |
 | W10 | **One step at a time** | Green suite between steps; don't batch A1 sub-shapes without tests |
@@ -230,9 +243,12 @@ seam-swap compiles at same call sites.
 
 ---
 
-## A2 — Motion & environment shapes (T2.5 + T2.6)
+## A2 — Motion & environment shapes (T2.5 + T2.6) ✅ COMPLETE
 
 Supports imported **wind**, **sea currents**, and later **salinity / sea-state** lookups.
+
+**Shipped:** `packages/engine/src/motionModel.ts`, `environmentContext.ts`; `packages/db/src/environment.ts`;
+`EngineInput.motionModel` + `EngineInput.environmentContext`; remote table `environment_samples` (12/12 tables).
 
 ### T2.5 — `MotionModel.predict(state, dt, env?)`
 
@@ -294,9 +310,11 @@ passed through `effectiveQuality` and `MotionModel.predict` without engine impor
 
 ---
 
-## A3 — Comms shapes (T2.7)
+## A3 — Comms shapes (T2.7) ← **ACTIVE**
 
 Supports imported **link budgets**, **latency**, **multi-hop relay paths**, and per-link contention.
+
+**Agent steps:** tests first → extend `commsModel.ts` → `comms_links` migration via **Supabase MCP** → db loader → green `pnpm verify`.
 
 > **A0.7 done:** `CommsModel` interface + `staticCommsModel` stub + gate wired via `fleetUsage`.
 > **A3 extends the shape** for relay topology — do not treat scalar `fleetUsage` as the final model.
@@ -403,11 +421,12 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] A0.8 `resolveOperatingPoint` green
 - [x] A1 initial T2.1–T2.4 (2D cv4): estimation modules, `tracks` table, UI ellipse via `ownAssetSearchRegion`
 - [x] **A1-revise:** 3D `spatial.ts`, cv6 state, slant range, z-up adapter — [A1_REVISE_3D.md](A1_REVISE_3D.md)
-- [ ] T2.5 MotionModel + T2.6 EnvironmentContext (`sample(kind, Position3)`) + DB table
+- [x] T2.5 `MotionModel` + `ConstantVelocityModel` + search region via propagated Q
+- [x] T2.6 `EnvironmentContext` + `environment_samples` migration + `loadEnvironmentContext`
 - [ ] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables — **stub done in A0.7**
 - [ ] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
-- [ ] Kalman-readiness `test.todo` written
-- [ ] `pnpm verify` green; engine purity lint still passes
+- [ ] Kalman-readiness `test.todo` — **exists** in `estimator.test.ts`; implement in D6
+- [x] `pnpm verify` green; engine purity lint passes (~142 tests, June 2026)
 
 ---
 
@@ -558,8 +577,8 @@ All external data enters through **two ingestion surfaces** — never directly i
 | T2.2 | `Measurement`, `position3Measurement` | A1 | ✅ |
 | T2.3 | `Estimator` (6D) | A1 | ✅ |
 | T2.4 | `Track`, `Observation`, `UncertaintyRegion` | A1 | ✅ tracks table + types |
-| T2.5 | `MotionModel` (6D SI) | A2 | Not started |
-| T2.6 | `EnvironmentContext.sample(kind, Position3)` | A2 | Not started |
+| T2.5 | `MotionModel` (6D SI) | A2 | ✅ |
+| T2.6 | `EnvironmentContext.sample(kind, Position3)` | A2 | ✅ |
 | T2.7 | `CommsModel` graph, `comms_links`, `comms_nodes` | A3 | Stub (A0.7) — graph pending |
 
 ## Tier 3 — Leaves (Phase C; guards in Phase B)
@@ -623,4 +642,8 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 # Next action
 
-**Phase A2 next** — `MotionModel.predict` on 6D SI state + `EnvironmentContext.sample(kind, Position3)` + DB table. **Do not start Phase B** until A2–A4 shapes are green.
+**Phase A3** — Comms graph per § A3 above: extend `CommsModel` with `route()` + `linkUtilization()`;
+add `comms_links` (+ optional `comms_nodes`) via Supabase MCP; wire db loader into `buildEngineInputFromDb`.
+Then **A4** (env factor registry). **Do not start Phase B** until A3 + A4 are green.
+
+**DDL reminder:** use Supabase MCP `apply_migration` — not REST keys, not `pnpm db:setup` alone on remote.

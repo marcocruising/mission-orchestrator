@@ -1,9 +1,10 @@
 import type { SensorSpec, VehicleState } from "./coverage.js";
 
-/** Context passed to each environment multiplier factor (env field added in A2). */
+/** Context passed to each environment multiplier factor. */
 export interface EnvMultContext {
   sensor: SensorSpec;
   vehicle: VehicleState;
+  environment?: import("./environmentContext.js").EnvironmentContext;
 }
 
 /** Graded multiplier factor: m(context, sensor) → [0, 1] typically. */

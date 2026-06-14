@@ -61,12 +61,13 @@ export function effectiveQuality(
   task: TaskTarget,
   vehicle: VehicleState,
   p = 0.5,
-  envFactors: EnvFactor[] = DEFAULT_ENV_FACTORS
+  envFactors: EnvFactor[] = DEFAULT_ENV_FACTORS,
+  environmentContext?: import("./environmentContext.js").EnvironmentContext
 ): QualityResult {
   const R = slantRangeKm(vehicle, task);
   const rm = rangeMult(R, sensor.max_range_km, p);
   if (isInfeasible(rm)) return INFEASIBLE;
-  const em = envMult(envFactors, { sensor, vehicle });
+  const em = envMult(envFactors, { sensor, vehicle, environment: environmentContext });
   return sensor.base_quality * rm * em;
 }
 
