@@ -27,10 +27,14 @@ export interface TaskConstraint {
   param: Record<string, unknown>;
 }
 
+export type TaskKind = "POINT" | "AREA";
+
 export interface TaskDef {
   id: string;
   mission_id: string;
   w_t: number;
+  /** Leaf kind — default POINT; AREA uses volume leaf in Phase C. */
+  kind?: TaskKind;
   target_x: number;
   target_y: number;
   target_depth_m: number;
@@ -156,8 +160,8 @@ function sensorSpec(s: AssetSensor): SensorSpec {
   };
 }
 
-/** Compute task coverage from assignments + belief (pure). */
-export function computeTaskCoverage(
+/** Point-task leaf — sensor-axis satisfaction at a fixed target (today's logic). */
+function computePointTaskLeaf(
   task: TaskDef,
   assignments: Assignment[],
   input: EngineInput
@@ -213,6 +217,37 @@ export function computeTaskCoverage(
   };
 }
 
+/** Guard stub — constant area leaf for B1; replaced by coverageVolume in Phase C. */
+function computeAreaTaskLeafStub(): { cov_t: number; freshnessValues: number[]; infeasible: boolean } {
+  return { cov_t: 0.7, freshnessValues: [1], infeasible: false };
+}
+
+/** Dispatch task coverage by leaf kind — rollup stays leaf-agnostic (B1 / T3.1). */
+export function computeTaskLeaf(
+  task: TaskDef,
+  assignments: Assignment[],
+  input: EngineInput
+): { cov_t: number; freshnessValues: number[]; infeasible: boolean } {
+  const kind = task.kind ?? "POINT";
+  switch (kind) {
+    case "POINT":
+      return computePointTaskLeaf(task, assignments, input);
+    case "AREA":
+      return computeAreaTaskLeafStub();
+    default:
+      return { cov_t: 0, freshnessValues: [], infeasible: true };
+  }
+}
+
+/** @deprecated Use computeTaskLeaf — alias for backward compatibility. */
+export function computeTaskCoverage(
+  task: TaskDef,
+  assignments: Assignment[],
+  input: EngineInput
+): { cov_t: number; freshnessValues: number[]; infeasible: boolean } {
+  return computeTaskLeaf(task, assignments, input);
+}
+
 export function computeMissionCoverage(
   mission: MissionDef,
   assignments: Assignment[],
@@ -221,7 +256,7 @@ export function computeMissionCoverage(
   const weighted: { w_t: number; cov_t: number }[] = [];
   const allFresh: number[] = [];
   for (const task of mission.tasks) {
-    const { cov_t, freshnessValues, infeasible } = computeTaskCoverage(task, assignments, input);
+    const { cov_t, freshnessValues, infeasible } = computeTaskLeaf(task, assignments, input);
     weighted.push({ w_t: task.w_t, cov_t: infeasible ? 0 : cov_t });
     allFresh.push(...freshnessValues);
   }
@@ -283,13 +318,17 @@ export function recomputeMissionStates(input: EngineInput, tick: number): Missio
 /** Default operating-point resolver — extended in S10; bearing via JSON handle in A0.8. */
 export { defaultResolveOperatingPoint, defaultResolveSpeed } from "./operatingPoint.js";
 
-/** Fleet comms gate: fleetUsage must fit within budget (P5 hard gate). */
+/** Fleet comms gate: per-link utilization ≤ 1 when graph loaded; else fleetUsage ≤ budget (P5). */
 export function checkFleetCommsGate(
   assignments: Assignment[],
   commsModel: CommsModel,
   ts: number,
   budget: number
 ): boolean {
+  const util = commsModel.linkUtilization(assignments, ts);
+  if (util.size > 0) {
+    return Math.max(...util.values()) <= 1;
+  }
   return commsModel.fleetUsage(assignments, ts) <= budget;
 }
 

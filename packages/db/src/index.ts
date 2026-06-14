@@ -3,3 +3,4 @@ export * from "./belief.js";
 export * from "./missions.js";
 export * from "./tracks.js";
 export * from "./environment.js";
+export * from "./comms.js";

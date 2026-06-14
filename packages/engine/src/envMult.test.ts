@@ -3,6 +3,9 @@ import {
   envMult,
   motionEnvFactor,
   DEFAULT_ENV_FACTORS,
+  salinityFactor,
+  seaStateFactor,
+  fogFactor,
   type EnvMultContext,
 } from "./envMult.js";
 import { envMultMotion } from "./envMult.js";
@@ -68,6 +71,11 @@ describe("envMult (A0.2 — product over extensible factor list)", () => {
       12
     );
   });
+
+  it("motion-only subset matches full DEFAULT registry (A4 stubs are no-op)", () => {
+    const c = ctx({ speed_kn: 4, top_speed_kn: 8 });
+    expect(envMult(DEFAULT_ENV_FACTORS, c)).toBeCloseTo(envMult([motionEnvFactor], c), 12);
+  });
 });
 
 describe("effectiveQuality uses envMult factor list (A0.2 regression)", () => {
@@ -120,5 +128,54 @@ describe("effectiveQuality uses envMult factor list (A0.2 regression)", () => {
     const withEnv = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, DEFAULT_ENV_FACTORS, env);
     const baseline = effectiveQuality(passiveAcoustic, target, vehicle);
     expect(withEnv as number).toBeCloseTo(baseline as number, 10);
+  });
+});
+
+describe("A4 env factor registry (stub bodies)", () => {
+  const c = ctx({ speed_kn: 4, top_speed_kn: 8 });
+  const env = staticEnvironmentContext(100, {
+    salinity_psu: 35,
+    sea_state_hs_m: 2,
+    fog_vis_km: 5,
+  });
+  const withEnv: EnvMultContext = { ...c, environment: env };
+
+  it("salinityFactor stub returns 1.0 with or without environment data", () => {
+    expect(salinityFactor(c)).toBe(1);
+    expect(salinityFactor(withEnv)).toBe(1);
+  });
+
+  it("seaStateFactor stub returns 1.0 with or without environment data", () => {
+    expect(seaStateFactor(c)).toBe(1);
+    expect(seaStateFactor(withEnv)).toBe(1);
+  });
+
+  it("fogFactor stub returns 1.0 with or without environment data", () => {
+    expect(fogFactor(c)).toBe(1);
+    expect(fogFactor(withEnv)).toBe(1);
+  });
+
+  it("registering stub factors in DEFAULT does not change quality vs motion-only", () => {
+    const target = { target_x: 2, target_y: 0, target_depth_m: 0 };
+    const vehicle: VehicleState = {
+      asset_id: "v1",
+      x_km: 0,
+      y_km: 0,
+      depth_m: 50,
+      speed_kn: 4,
+      top_speed_kn: 8,
+    };
+    const motionOnly = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, [motionEnvFactor]);
+    const fullRegistry = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, DEFAULT_ENV_FACTORS, env);
+    expect(fullRegistry as number).toBeCloseTo(motionOnly as number, 12);
+  });
+
+  it("replacing a registry factor with 0.5 scales the product by half", () => {
+    const baseline = envMult(DEFAULT_ENV_FACTORS, withEnv);
+    const halved = envMult(
+      [motionEnvFactor, salinityFactor, seaStateFactor, () => 0.5],
+      withEnv
+    );
+    expect(halved).toBeCloseTo(baseline * 0.5, 12);
   });
 });

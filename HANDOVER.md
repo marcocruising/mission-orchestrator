@@ -1,27 +1,36 @@
 # Mission Orchestrator — Handover
 
 **Date:** June 2026  
-**Status:** S0–S10 · **A0** · **A1** (incl. A1-revise 3D) · **A2** complete · remote Supabase live (**12 tables**)
+**Status:** S0–S10 · **A0–A4** · **B** complete · remote Supabase live (**14 tables**)
 
-**New agent:** Read this file first, then [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § **A3**. Original build spec: [README.md](README.md).
+**New agent:** Read this file first, then **[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)** (full spec). Summary in [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § C1.
 
 ---
 
 ## Agent pickup (start here)
 
-### What to do next — Phase A3 (Comms graph)
+### What to do next — Phase C1a (3D volume patrol, AABB)
 
-1. Read EXPANSION_REGISTER **A3** — target `CommsModel` graph shape (`route`, `linkUtilization`, `pathDelay`).
-2. **Tests first** — two-hop delay sum; shared relay link utilization; gate rejects over-budget link.
-3. Create `comms_links` (+ optional `comms_nodes`) migration; apply via **Supabase MCP `apply_migration`** (not REST).
-4. Extend `packages/engine/src/commsModel.ts` — keep `fleetUsage` stub for backward compat.
-5. Wire `packages/db/src/comms.ts` loader; pass graph body into `buildEngineInputFromDb`.
-6. Run `pnpm verify` + `pnpm db:verify` (expect **12/12** tables → **14/14** after A3 if both tables added).
-7. **Stop** after A3 green; do not start Phase B until A4 is also done.
+**Read [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) in full** — locked decisions, types, DDL, algorithm, file list.
+
+1. **C1.1** — `packages/engine/src/volume/footprint.ts`: `Footprint` union, `discretizeFootprint` (AABB only) + tests.
+2. **C1.2** — `coverageVolume.ts` + tests (synthetic fixture, no DB).
+3. **C1.3** — Replace `computeAreaTaskLeafStub` in `stateEngine.ts`; update `guard.test.ts` (AREA ≠ constant 0.7).
+4. **C1.4** — Migration `c1_volume_patrol` via Supabase MCP; `packages/db/src/volume.ts`; update `verify-supabase.mjs` → **15/15** tables.
+5. **C1.5** — Load/save `task_volume_visits` on tick via `buildEngineInputFromDb` + orchestrator persist.
+6. **C1.6** — Optional demo seed (subsurface AABB patrol); run health check below.
+7. **Stop** — do not start C2 or **C1b** (planner sweep) until user confirms.
+
+### Locked for C1 (do not change without user)
+
+- **AABB footprint** in `footprint jsonb` — polygon is later `discretizeFootprint` body swap.
+- **Opaque `cell_id`** visit keys — not `(i,j,k)` indices.
+- **Per-cell `effectiveQuality`** — env/currents/thermocline via existing seams, not volume-specific formulas.
+- **Fixed z band** — no thermocline tracking in C1.
 
 ### Do not skip
 
-- **A3 → A4 → Phase B** before Tier 3 bodies (volume patrol, directional sensors).
+- **B guards must stay green** — `lint-rollup-purity`, `lint-planner-purity`, `guard.test.ts`.
 - **Engine purity** — no DB imports inside `packages/engine`.
 - **Gate before grade** (P5) — hard cutoffs prune before scoring.
 - **One step at a time** — green suite between steps.
@@ -32,7 +41,7 @@
 pnpm db:verify && pnpm verify && node apps/orchestrator/dist/cli.js inspect
 ```
 
-Expected: **12/12** tables · **~142** tests passed (1 Kalman `test.todo`) · fleet/mission output.
+Expected: **15/15** tables after C1 · **~185+** tests · rollup + planner lints green · fleet/mission output.
 
 ---
 
@@ -76,7 +85,7 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 | **A0.4** | `objective.ts` | Threats/risk, fuel/comms costs (D3/D6) — `ObjectiveTerm[]` |
 | **A0.5** | `planner.ts` | MIP / column-generation (D6) — `Planner.replan()` |
 | **A0.6** | `summarize.ts` | LLM narration (D5) — swappable `Summarizer` |
-| **A0.7** | `commsModel.ts` | Fleet comms gate (D2) — **stub**; A3 adds graph |
+| **A0.7** | `commsModel.ts` | Fleet comms gate (D2) — graph body in A3 |
 | **A0.8** | `operatingPoint.ts` | Directional sensors (C2) — opaque resolver |
 
 ### Phase A1 — Estimation + 3D spatial (incl. A1-revise)
@@ -101,9 +110,36 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 | `motionModel.ts` | `MotionModel`, `ConstantVelocityModel`, `propagateState`, `initialLostContactState` |
 | `environmentContext.ts` | `EnvironmentContext`, `staticEnvironmentContext`, `sampleEnvironmentContext`, `buildEnvironmentContext` |
 | `EngineInput` | + `motionModel`, `environmentContext` (injected each tick) |
-| `effectiveQuality` | Plumbs `environmentContext` into `envMult` ctx (factors still motion-only until A4) |
+| `effectiveQuality` | Plumbs `environmentContext` into `envMult` ctx |
 | `packages/db/environment.ts` | `loadEnvironmentContext()` from `environment_samples` |
 | Supabase | `environment_samples` table (applied via MCP `a2_environment_samples`) |
+
+### Phase A3 — Comms graph
+
+| Module | What shipped |
+|--------|----------------|
+| `commsModel.ts` | `buildCommsModel`, `route`, `pathDelay`, `linkUtilization`; `messageDeliveryTs(..., queryTs?)` |
+| `checkFleetCommsGate` | Per-link utilization ≤ 1 when graph loaded; `fleetUsage` fallback |
+| `packages/db/comms.ts` | `loadCommsLinks`, `loadCommsModel` → `buildEngineInputFromDb` |
+| Supabase | `comms_links`, `comms_nodes` (MCP `a3_comms_graph`) |
+| Tests | `commsModel.test.ts` (12); `comms.integration.test.ts` (live Supabase round-trip) |
+
+### Phase A4 — EnvMult factor registry
+
+| Module | What shipped |
+|--------|----------------|
+| `envFactors/salinityFactor.ts` | Stub → 1.0; samples `salinity_psu` |
+| `envFactors/seaStateFactor.ts` | Stub → 1.0; samples `sea_state_hs_m` |
+| `envFactors/fogFactor.ts` | Stub → 1.0; samples `fog_vis_km` |
+| `DEFAULT_ENV_FACTORS` | `[motion, salinity, seaState, fog]` — no behavior change until D1 import |
+
+### Phase B — Guard tests
+
+| Guard | What shipped |
+|-------|----------------|
+| **B1** | `computeTaskLeaf` dispatch; AREA stub (0.7); `guard.test.ts`; `lint-rollup-purity.mjs` |
+| **B2** | Explicit envMult extensibility gate in `guard.test.ts` |
+| **B3** | JSON bearing + planner opaque-handle tests; `lint-planner-purity.mjs` |
 
 ---
 
@@ -111,10 +147,9 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
 | Phase | Scope |
 |-------|--------|
-| **A3** | Comms graph — `route`, `linkUtilization`, `comms_links` / `comms_nodes` |
-| **A4** | EnvMult factor registry — stub salinity / sea-state / fog factors |
-| **B** | Tier 3 guard tests (rollup leaf-agnostic) |
-| **C** | Volume patrol (C1), directional sensors (C2) |
+| **C1a** | 3D AABB volume patrol — `coverageVolume`, `task_volume_visits` ← **NEXT** ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
+| **C1b** | Planner sweep paths through volume (deferred) |
+| **C2** | Directional sensors + 3D pointing (`inBeamRange`, elevation) |
 | **D** | Imported data bodies, S11–S13 (threats, spoofing, LLM) |
 
 ---
@@ -127,19 +162,26 @@ packages/engine/     Pure logic — zero DB deps, Vitest property tests
   estimate.ts        cv6 Estimate, migrateEstimate (A1)
   motionModel.ts     ConstantVelocityModel, propagateState (A2)
   environmentContext.ts  FieldKind, sample(), static/grid bodies (A2)
-  coverage.ts        slantRangeKm, effectiveQuality + env ctx (A1/A2)
+  commsModel.ts      buildCommsModel, route, linkUtilization (A3)
+  envFactors/        salinity, seaState, fog stubs (A4)
+  guard.test.ts      B1/B2/B3 guard tests
+  coverage.ts        slantRangeKm, effectiveQuality + env ctx (A1/A2/A4)
   searchRegion.ts    ownAssetSearchUncertainty via MotionModel (A1/A2)
-  commsModel.ts      Comms stub — extend graph in A3
+  stateEngine.ts     computeTaskLeaf dispatch (B1); AREA stub → C1 coverageVolume
+  volume/            C1: footprint.ts, coverageVolume.ts (create)
   …                  reconcile, envMult, objective, planner, summarize, operatingPoint
 packages/db/         Supabase loaders
-  missions.ts        buildEngineInputFromDb (belief, missions, env ctx, …)
+  missions.ts        buildEngineInputFromDb (belief, missions, env, comms, …)
   environment.ts     loadEnvironmentContext (A2)
+  comms.ts           loadCommsModel (A3)
+  comms.integration.test.ts  Live Supabase comms round-trip
   tracks.ts          parseTrackRow + migrateEstimate (A1)
 apps/orchestrator/   CLI: inspect | sim | tick | apply
 apps/ui/             Vite + React Realtime dashboard
-supabase/migrations/ S0–A2 DDL (local source of truth; apply remote via MCP)
-scripts/             lint-engine.mjs, verify-supabase.mjs, load-env.mjs
-EXPANSION_REGISTER.md  Canonical plan — **A3 next**
+supabase/migrations/ S0–A3 DDL (local source of truth; apply remote via MCP)
+scripts/             lint-engine.mjs, lint-rollup-purity.mjs, lint-planner-purity.mjs, verify-supabase.mjs
+EXPANSION_REGISTER.md  Canonical plan
+C1_VOLUME_PATROL.md    **C1 agent pickup spec (AABB v1)** — read before coding
 A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 ```
 
@@ -152,17 +194,17 @@ A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 | Channel | Use for |
 |---------|---------|
 | **Supabase MCP** | DDL — `apply_migration`, `list_tables`, `list_migrations` |
-| **`.env` REST keys** | Runtime — orchestrator, UI, `pnpm db:verify` |
+| **`.env` REST keys** | Runtime — orchestrator, UI, `pnpm db:verify`, integration tests |
 
-**MCP migrations applied:** `s0_config` … `a1_tracks`, `a2_environment_samples`
+**MCP migrations applied:** `s0_config` … `a1_tracks`, `a2_environment_samples`, `a3_comms_graph`
 
-- **12/12** tables reachable via REST
+- **14/14** tables reachable via REST
 - RLS enabled; anon read; service role writes
-- Demo seed: 2 assets, 2 missions, 2 assignments, 13 config keys; `environment_samples` empty (defaults via `staticEnvironmentContext`)
+- Demo seed: 2 assets, 2 missions, 2 assignments, 13 config keys; `environment_samples` / `comms_links` empty by default (stubs via engine)
 
 ```bash
-pnpm db:verify    # REST — expect 12/12 tables
-pnpm verify       # lint + build + ~142 tests
+pnpm db:verify    # REST — expect 14/14 tables
+pnpm verify       # lint + build + ~181 tests
 ```
 
 ---
@@ -202,10 +244,11 @@ pnpm --filter @mission-orchestrator/ui dev   # → http://localhost:5173
 ```
 Simulator → reports → ingestReports → reconcile() → belief_facts
 environment_samples ──→ loadEnvironmentContext() ──→ EnvironmentContext
+comms_links ──→ loadCommsModel() ──→ CommsModel (route, linkUtilization, pathDelay)
                                                               ↓
 assignments + missionDefs + belief + commsModel + motionModel + environmentContext
                               ↓
-                    recomputeMissionStates (PURE)
+                    computeTaskLeaf → recomputeMissionStates (PURE)
                               ↓
               Monitor → summarize() → salience gate → Planner.replan()
                               ↓
@@ -228,9 +271,12 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
 
 | Check | Result |
 |-------|--------|
-| `pnpm db:verify` | 12/12 tables, anon RLS OK |
-| `pnpm verify` | 142 passed, 1 todo (Kalman-readiness) |
+| `pnpm db:verify` | 14/14 tables, anon RLS OK |
+| `pnpm verify` | ~181 passed, 1 todo (Kalman-readiness) |
 | Engine purity lint | Passed |
+| Rollup leaf-agnostic lint | Passed |
+| Planner opaque-handle lint | Passed |
+| Supabase comms integration | 4/4 live tests passed |
 
 **Demo note:** Default seed may keep salience below σ=0.4 — tune seed or timeline for alert→plan demo.
 
@@ -241,33 +287,37 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
 1. **Supabase MCP vs `.env`** — MCP for DDL; REST for runtime. Re-link MCP if project ref drifts from `SUPABASE_URL`.
 2. **`freshness(H) = 0.5`** — implemented as `0.5^(Δt/H)`, not `exp(−Δt/H)`.
 3. **Engine purity lint** (`scripts/lint-engine.mjs`) — do not remove.
-4. **Root script is `verify`**, not `ci` (pnpm reserves `ci`).
-5. **Sim re-runs** — `world_truth` PK duplicates; needs upsert/`--force` (known gap).
-6. **A0.3 ≠ confidence** — aggregator is sensor-axis coverage; confidence is min freshness.
-7. **Comms is a graph (W5)** — do not hack relay logic into planner or scalar `fleetUsage` alone.
-8. **3D spatial (A1)** — `Position3` + z-up; **`z_m = -depth_m` only in `spatial.ts`**.
-9. **Operating points opaque to planner** — resolved only in `resolveOperatingPoint`.
-10. **One step at a time** — tests first, green suite, stop between steps.
+4. **Rollup lint** (`scripts/lint-rollup-purity.mjs`) — `computeMissionCoverage` must stay leaf-agnostic.
+5. **Planner lint** (`scripts/lint-planner-purity.mjs`) — no `operating_point` introspection in planner.
+6. **Root script is `verify`**, not `ci` (pnpm reserves `ci`).
+7. **Sim re-runs** — `world_truth` PK duplicates; needs upsert/`--force` (known gap).
+8. **A0.3 ≠ confidence** — aggregator is sensor-axis coverage; confidence is min freshness.
+9. **Comms is a graph (W5)** — per-link utilization; `messageDeliveryTs` needs `queryTs = input.now`.
+10. **3D spatial (A1)** — `Position3` + z-up; **`z_m = -depth_m` only in `spatial.ts`**.
+11. **Operating points opaque to planner** — resolved only in `resolveOperatingPoint`.
+12. **One step at a time** — tests first, green suite, stop between steps.
 
 ---
 
 ## Known gaps (non-blocking)
 
-1. **A3–A4** — remaining Phase A shapes (see EXPANSION_REGISTER)
+1. **C1a–C1b** — Volume patrol: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) (AABB v1 next; polygon/sweep deferred)
 2. **Alert demo tuning** — salience ≥ 0.4 with default seed
 3. **UI Accept** — wire to orchestrator API / Edge Function
 4. **Sim idempotency** — upsert or `--force`
 5. **UAV seed scenario** — `z_m` belief fact for air-domain demo
+6. **D2 ingest delay** — `ingestReports` does not yet apply `pathDelay` (shape ready in A3)
 
 ---
 
-## Key files for A3
+## Key files for C1a
 
 | File | Purpose |
 |------|---------|
-| **`EXPANSION_REGISTER.md` § A3** | Target CommsModel graph shape + tests |
-| `packages/engine/src/commsModel.ts` | Extend interface — keep call sites frozen |
-| `packages/engine/src/stateEngine.ts` | `checkFleetCommsGate` — evolve to per-link utilization |
-| `packages/db/src/missions.ts` | `buildEngineInputFromDb` — add comms loader |
-| `packages/engine/src/applyPlan.ts` | `buildEngineInput` defaults |
-| `scripts/lint-engine.mjs` | Purity guardrail |
+| **[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)** | **Primary pickup spec** — types, DDL, algorithm, steps |
+| `packages/engine/src/volume/footprint.ts` | `Footprint`, `discretizeFootprint` (AABB) |
+| `packages/engine/src/volume/coverageVolume.ts` | Volume leaf body |
+| `packages/engine/src/stateEngine.ts` | Replace `computeAreaTaskLeafStub` |
+| `packages/engine/src/guard.test.ts` | B1 guard — update AREA expectations |
+| `packages/db/src/volume.ts` | Load/save `task_volume_visits` |
+| `scripts/lint-rollup-purity.mjs` | Must stay green — do not touch rollup |

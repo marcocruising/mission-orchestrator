@@ -29,6 +29,8 @@ const tables = [
   "plan_eval",
   "tracks",
   "environment_samples",
+  "comms_nodes",
+  "comms_links",
 ];
 
 let ok = 0;

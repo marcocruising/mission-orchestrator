@@ -6,7 +6,9 @@
     "build": "pnpm -r run build",
     "test": "pnpm test:root && pnpm -r run test",
     "lint:engine": "node scripts/lint-engine.mjs",
-    "verify": "pnpm lint:engine && pnpm build && pnpm test",
+    "lint:rollup": "node scripts/lint-rollup-purity.mjs",
+    "lint:planner": "node scripts/lint-planner-purity.mjs",
+    "verify": "pnpm lint:engine && pnpm lint:rollup && pnpm lint:planner && pnpm build && pnpm test",
     "test:root": "vitest run --config vitest.config.ts",
     "db:verify": "node scripts/verify-supabase.mjs",
     "db:setup": "node scripts/setup-db.mjs"

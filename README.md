@@ -1,8 +1,9 @@
 # Mission Orchestrator — Build README (for Claude Code)
 
 > **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
-> **Phase A0–A2 complete** (seams, 3D cv6, MotionModel, EnvironmentContext). **Active work: Phase A3**
-> — Comms graph shapes ([EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)). Runbook: [HANDOVER.md](HANDOVER.md).
+> **Phase A0–A4 complete** (seams, 3D cv6, MotionModel, EnvironmentContext, Comms graph, env factor registry).
+> **Phase B guard tests complete.** **Active work: Phase C1a** — 3D AABB volume patrol
+> ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)). Runbook: [HANDOVER.md](HANDOVER.md).
 
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
@@ -276,12 +277,12 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 | Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + `ObjectiveTerm[]` (A0.4) | S11 / D3 | ✅ terms wired (=0) |
 | Spoofing / adversarial data | `reconcile()` body (A0.1) | S12 / D4 | ✅ seam installed |
 | LLM summaries | `summarize()` body (A0.6) | S13 / D5 | ✅ seam installed |
-| Salinity / sea-state / fog | `envMult` factor list (A0.2; **A4 registry next**) | D1 | ✅ ctx wired (A2) · factors pending A4 |
+| Salinity / sea-state / fog | `envMult` factor list (A0.2 + **A4 ✅**) | D1 | ✅ stubs registered (=1.0) |
 | Dynamics-aware staleness | `Fact.half_life` → `MotionModel` body (A2) | D6 | ✅ shape installed |
 | Continuous operating points | `resolveOperatingPoint` (A0.8) | D6 | ✅ seam installed |
-| Area / sector-blanketing coverage | leaf above rollup + guard test B1 | C1 volume patrol | pending |
+| Area / sector-blanketing coverage | `computeTaskLeaf` + B1 guard → **C1a AABB** ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) | C1a | B1 ✅ · C1a next |
 | Substitutable sensors | `coverageTask` aggregator (A0.3) | D6 | ✅ seam installed |
-| Real fleet/comms contention | `CommsModel` graph (A0.7 stub; **A3 shape next**) | D2 | ✅ stub · A3 pending |
+| Real fleet/comms contention | `CommsModel` graph (**A3 ✅**) | D2 import body | ✅ graph + gate · ingest delay pending D2 |
 | Objective unit normalization | `computeObjective` + config λ's (A0.4) | D6 | ✅ seam installed |
 | MIP / column-generation solver | `Planner.replan` interface (A0.5) | D6 | ✅ seam installed |
 
@@ -293,6 +294,7 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0** for a greenfield build. **For current work**, start with **Phase A3** in
-[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (Comms graph: `route`, per-link `linkUtilization`, `comms_links` table).
-Apply DDL via **Supabase MCP `apply_migration`**; verify with `pnpm db:verify`. Build one step at a time; green tests; stop between steps.
+**Start with S0** for a greenfield build. **For current work**, start with **Phase C1a** in
+[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) (AABB volume patrol: `Footprint` seam, `coverageVolume`, `task_volume_visits`).
+Summary in [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md). Apply DDL via **Supabase MCP `apply_migration`**;
+verify with `pnpm db:verify` (15/15 tables after C1) and `pnpm verify` (~181+ tests + rollup/planner lints).

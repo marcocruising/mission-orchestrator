@@ -1,7 +1,7 @@
 # A1-revise — 3D spatial model (reference — COMPLETE)
 
 **Status:** **COMPLETE** (June 2026)  
-**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) Phase **A3** (A2 done)  
+**Next work:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) · [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (A0–A4 + B done)  
 **Commit target:** `A1-revise: 3D spatial model (cv6, slant range, z-up adapter)`
 
 Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
@@ -76,24 +76,24 @@ Air assets: use **`z_m` belief fact** (positive). Do not write conflicting `dept
 5. **`searchRegion.ts` + UI + `tracks.ts`** — 6D search uncertainty, `migrateEstimate` on load ✅  
 6. **Docs** — EXPANSION_REGISTER / HANDOVER / README synced ✅  
 
-Run after each step: `pnpm verify` · `pnpm db:verify` (12 tables as of A2).
+Run after each step: `pnpm verify` · `pnpm db:verify` (14 tables as of A3).
 
 ---
 
-## What A1 initial already shipped (2D — to be upgraded)
+## What A1 initial already shipped (2D — upgraded in A1-revise)
 
 | Module | Path | Notes |
 |--------|------|-------|
-| Estimate / ellipse | `packages/engine/src/estimate.ts` | **4D** `ESTIMATE_STATE_DIM=4` — revise to 6D |
-| Measurement | `packages/engine/src/measurement.ts` | 2D position fix |
-| Estimator | `packages/engine/src/estimator.ts` | 4D CV predict |
+| Estimate / ellipse | `packages/engine/src/estimate.ts` | **6D cv6** |
+| Measurement | `packages/engine/src/measurement.ts` | 3D position fix |
+| Estimator | `packages/engine/src/estimator.ts` | 6D CV predict |
 | Track | `packages/engine/src/track.ts` | Track types + DB row helpers |
-| Search region | `packages/engine/src/searchRegion.ts` | Horizontal ellipse via engine |
+| Search region | `packages/engine/src/searchRegion.ts` | 6D reachable set via MotionModel |
 | Migration | `supabase/migrations/20250614000006_a1_tracks.sql` | `tracks` table |
 | DB loader | `packages/db/src/tracks.ts` | load/upsert tracks |
 | UI | `apps/ui/src/App.tsx` | `ownAssetSearchRegion` from engine |
 
-Tests: ~142 passing with 1 Kalman `test.todo` (June 2026 session).
+Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 
 ---
 
@@ -101,10 +101,12 @@ Tests: ~142 passing with 1 Kalman `test.todo` (June 2026 session).
 
 | Phase | Impact |
 |-------|--------|
-| **A2** | `MotionModel` on 6D SI state; `EnvironmentContext.sample(kind, Position3)` not `(x_km, y_km, depth_m?)` |
-| **A4** | `EnvMultContext` needs vehicle + target `Position3` |
-| **B1 / C1** | **Volume patrol** — AREA tasks: `{ footprint, z_min_m, z_max_m, cell_size_m }`; `coverageVolume()` leaf |
-| **C2** | Needs `inBeamRange` / `elevation_deg` on operating point — register shape change |
+| **A2** ✅ | `MotionModel` on 6D SI state; `EnvironmentContext.sample(kind, Position3)` |
+| **A4** ✅ | `DEFAULT_ENV_FACTORS` with stub salinity/sea-state/fog |
+| **B1** ✅ | `computeTaskLeaf` dispatch; rollup leaf-agnostic lint |
+| **C1a** ← next | **AABB volume patrol** — `Footprint` seam + `discretizeFootprint`; polygon later as body swap. Spec: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
+| **C1b** | Planner sweep paths (deferred) |
+| **C2** | Needs `inBeamRange` / `elevation_deg` on operating point |
 | **D3** | Threats as 2D polygons + z bounds |
 | **D5** | LLM formats altitude vs depth from signed z |
 
@@ -116,7 +118,8 @@ Tests: ~142 passing with 1 Kalman `test.todo` (June 2026 session).
 - Reading `depth_m` in engine without `z_m = -depth_m` adapter  
 - 2D range in coverage after this revise  
 - Migrating tracks with z=0 point estimate for unknown depth  
-- Implementing relay/comms logic in planner (W5)
+- Implementing relay/comms logic in planner (W5)  
+- Reading `task.target_x` inside `computeMissionCoverage` rollup (B1 lint catches this)
 
 ---
 
@@ -124,4 +127,4 @@ Tests: ~142 passing with 1 Kalman `test.todo` (June 2026 session).
 
 Same as README PRIME DIRECTIVE: tests first → minimal impl → green suite → stop → wait for confirmation.
 
-Do **not** start A2 until A1-revise is green.
+Phase A + B complete — proceed to **C1a** per [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).

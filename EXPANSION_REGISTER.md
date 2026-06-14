@@ -1,9 +1,9 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 · **A0** · **A1** (3D cv6) · **A2** complete · **A3–A4 + B–D pending**
+**Status:** S0–S10 · **A0–A4** · **B** complete · **C–D pending**
 
-> **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* → then **A3 below**.
-> Health: `pnpm db:verify` (12/12) · `pnpm verify` (~142 tests).
+> **New agent pickup:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) (full spec) · [HANDOVER.md](HANDOVER.md) § *Agent pickup*.
+> Health: `pnpm db:verify` (14/14 → **15/15 after C1**) · `pnpm verify` (~181 tests · 1 Kalman `test.todo`).
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -34,14 +34,14 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A0.4** | `objective.ts` | ✅ Done | Sum over `ObjectiveTerm[]`; move / exposure / risk penalties as pluggable terms |
 | **A0.5** | `planner.ts` | ✅ Done | `Planner.replan()` interface; `defaultPlanner` + `stubPlanner`; conformance test |
 | **A0.6** | `summarize.ts` | ✅ Done | `summarize(state, summarizer?)`; v1 = `templateSummarizer`; tick writes `summary_text` |
-| **A0.7** | `commsModel.ts` | ✅ Done (stub) | Gate wired via `fleetUsage`; **A3 adds graph/route/per-link utilization** |
+| **A0.7** | `commsModel.ts` | ✅ Done | Graph model + per-link gate; `staticCommsModel` fallback when no links |
 | **A0.8** | `operatingPoint.ts` | ✅ Done | `resolveOperatingPoint` on `EngineInput`; enum, numeric, JSON bearing handles |
 
 **Clarifications captured in design:**
 
 - **A0.3 ≠ confidence aggregation.** A0.3 plugs in custom rules for combining **sensor-axis satisfaction** into task coverage (`cov_t`). Mission **confidence** still uses `confidenceMission` (min freshness) — a parallel injectable seam can be added later if needed.
 - **A0.4 uses the same extensibility pattern as A0.2.** Rewards and penalties are additive **terms**, not a monolithic formula. Movement cost today is `moveCountPenaltyTerm`; future terms (fuel, comms load, route distance, operating-point cost) register without changing the planner core.
-- **A0.7 comms is a stub seam only.** `staticCommsModel` + scalar `fleetUsage` wires the gate today. **Relay/path topology is NOT modeled yet** — see A3 and *Watch-outs* below. Do not implement relay logic in the planner.
+- **A0.7 comms graph complete (A3).** `buildCommsModel` + `route()` / `pathDelay()` / `linkUtilization()`; gate uses max utilization ≤ 1 when graph loaded, else `fleetUsage`. **`messageDeliveryTs(sentTs, from, to, queryTs?)`** — pass `input.now` as `queryTs` for link snapshot (not `sentTs`).
 
 ### Progress log (Phase A2 — motion + environment)
 
@@ -51,9 +51,44 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A2 / T2.6** | `environmentContext.ts` | ✅ Done | `staticEnvironmentContext`, `sampleEnvironmentContext`, `buildEnvironmentContext` |
 | **A2 / T2.6** | `environment_samples` | ✅ Done | Migration `a2_environment_samples` on remote via Supabase MCP |
 | **A2 wire** | `EngineInput` | ✅ Done | + `motionModel`, `environmentContext`; `loadEnvironmentContext` in db adapter |
-| **A2 wire** | `effectiveQuality` | ✅ Done | Passes `environmentContext` into `envMult` ctx (A4 adds consuming factors) |
+| **A2 wire** | `effectiveQuality` | ✅ Done | Passes `environmentContext` into `envMult` ctx; A4 stub factors registered |
 
 **Commit boundary:** `A2: motion and environment shapes`.
+
+### Progress log (Phase A3 — comms graph)
+
+| Step | Module / table | Status | Notes |
+|------|----------------|--------|-------|
+| **A3 / T2.7** | `commsModel.ts` | ✅ Done | `buildCommsModel`, `route`, `pathDelay`, `linkUtilization`; BFS routing |
+| **A3 / T2.7** | `comms_links`, `comms_nodes` | ✅ Done | Migration `a3_comms_graph` via Supabase MCP; 14/14 tables |
+| **A3 wire** | `packages/db/comms.ts` | ✅ Done | `loadCommsLinks`, `loadCommsModel` → `buildEngineInputFromDb` |
+| **A3 gate** | `checkFleetCommsGate` | ✅ Done | Per-link utilization when map non-empty; `fleetUsage` fallback |
+| **A3 tests** | unit + integration | ✅ Done | `commsModel.test.ts` (12); `comms.integration.test.ts` (live Supabase) |
+
+**Commit boundary:** `A3: comms graph shapes`.
+
+### Progress log (Phase A4 — envMult factor registry)
+
+| Step | Module | Status | Notes |
+|------|--------|--------|-------|
+| **A4** | `envFactors/salinityFactor.ts` | ✅ Done | Stub → 1.0; samples `salinity_psu` at vehicle position |
+| **A4** | `envFactors/seaStateFactor.ts` | ✅ Done | Stub → 1.0; samples `sea_state_hs_m` |
+| **A4** | `envFactors/fogFactor.ts` | ✅ Done | Stub → 1.0; samples `fog_vis_km` |
+| **A4** | `DEFAULT_ENV_FACTORS` | ✅ Done | `[motion, salinity, seaState, fog]` — no behavior change until D1 |
+
+**Commit boundary:** `A4: envMult factor registry`.
+
+### Progress log (Phase B — guard tests)
+
+| Step | Module / test | Status | Notes |
+|------|---------------|--------|-------|
+| **B1** | `computeTaskLeaf` dispatch | ✅ Done | POINT leaf + AREA stub (0.7); unknown kind → infeasible |
+| **B1** | `guard.test.ts` | ✅ Done | Mixed mission rollup; POINT golden fixture (~0.8473) |
+| **B1** | `lint-rollup-purity.mjs` | ✅ Done | Static guard — `computeMissionCoverage` must not read point-only fields |
+| **B2** | `guard.test.ts` + A4 tests | ✅ Done | Salinity stub no-op on `DEFAULT_ENV_FACTORS` |
+| **B3** | `guard.test.ts` + `lint-planner-purity.mjs` | ✅ Done | JSON bearing + enum handles; planner must not parse `operating_point` |
+
+**Commit boundary:** `B: tier-3 guard tests`.
 
 ---
 
@@ -76,7 +111,7 @@ These came from the post-S10 gap analysis and Phase A0 implementation. **Read be
 | W11 | **3D spatial seam** | All engine math uses `Position3` + z-up; **only `spatial.ts`** converts legacy `depth_m` (`z_m = -depth_m`) |
 | W12 | **Horizontal bearing ≠ 3D** | `horizontalBearingMeasurement` is azimuth only; full triangulation needs elevation (C2/D6) |
 | W13 | **Slant range seam** | Use `rangeM()` / `rangeKm()` in coverage — not raw `hypot(dx, dy)`; C2 may need `inBeamRange` body |
-| W14 | **Volume patrol (C1)** | AREA tasks patrol a **3D volume** (`z_min_m`, `z_max_m`), not a horizontal slice only |
+| W14 | **Volume patrol (C1)** | AREA tasks patrol a **3D AABB** (`Footprint` seam); polygon = later body swap on `discretizeFootprint` — see [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
 
 ---
 
@@ -105,9 +140,9 @@ does not reshape `cov_t → cov_m → tier` or `MissionState` columns.
 ## Execution phases (order of work)
 
 ```
-Phase A — Structural foundation (T2 shapes + T1 seam retrofits)   ← DO THIS FIRST
-Phase B — Guard tests (T3 prerequisites)
-Phase C — Tier 3 bodies (area patrol, directional sensors)
+Phase A — Structural foundation (T2 shapes + T1 seam retrofits)   ✅ COMPLETE
+Phase B — Guard tests (T3 prerequisites)                          ✅ COMPLETE
+Phase C — Tier 3 bodies (area patrol, directional sensors)        ← NEXT
 Phase D — Tier 1 bodies (threats, spoofing, LLM, imported-data factors, solver)
 ```
 
@@ -174,13 +209,17 @@ computeObjective(ctx, terms?) → sum of terms
 
 **Tests locked:** golden fixture `0.77`; each move costs exactly `λ_move`; exposure/risk penalties scale by `λ_exp`/`λ_risk`; injected stub term is no-op; extra cost term changes score predictably.
 
-### A0.2 — EnvMult factor registry (partial — full registry in Phase A step A4)
+### A0.2 — EnvMult factor registry (complete in A4)
 
 ```typescript
 type EnvFactor = (ctx: EnvMultContext) => number;
 
-const DEFAULT_ENV_FACTORS: EnvFactor[] = [motionEnvFactor];
-// Phase A step A4 adds stub salinityFactor, seaStateFactor, fogFactor
+const DEFAULT_ENV_FACTORS: EnvFactor[] = [
+  motionEnvFactor,
+  salinityFactor,    // stub → 1.0 until D1
+  seaStateFactor,    // stub → 1.0 until D1
+  fogFactor,         // stub → 1.0 until D1
+];
 ```
 
 **Already done (skip):** per-fact `half_life_s` on `Fact` (T1.5 shape); numeric operating-point handles in `defaultResolveSpeed` (partial T1.6).
@@ -310,14 +349,12 @@ passed through `effectiveQuality` and `MotionModel.predict` without engine impor
 
 ---
 
-## A3 — Comms shapes (T2.7) ← **ACTIVE**
+## A3 — Comms shapes (T2.7) ✅ COMPLETE
 
 Supports imported **link budgets**, **latency**, **multi-hop relay paths**, and per-link contention.
 
-**Agent steps:** tests first → extend `commsModel.ts` → `comms_links` migration via **Supabase MCP** → db loader → green `pnpm verify`.
-
-> **A0.7 done:** `CommsModel` interface + `staticCommsModel` stub + gate wired via `fleetUsage`.
-> **A3 extends the shape** for relay topology — do not treat scalar `fleetUsage` as the final model.
+**Shipped:** `buildCommsModel`, `selectActiveLinks`, `findRoute`; `comms_links` + `comms_nodes` tables;
+`packages/db/src/comms.ts`; gate evolved to per-link utilization; Supabase integration tests.
 
 ### T2.7 — `CommsModel` + graph storage
 
@@ -344,12 +381,12 @@ interface CommsModel {
 
   // A3 — add for relays
   route(from: string, to: string, ts: number): string[];  // node ids, endpoints included
-  pathDelay(sentTs: number, from: string, to: string): number;  // sum hop delays on route
+  pathDelay(sentTs: number, from: string, to: string, ts?: number): number;
   linkUtilization(assignments: Assignment[], ts: number): Map<string, number>;  // key "from:to"
 
-  // A0.7 stub — deprecate for gate once linkUtilization lands; keep for simple demos
+  // A0.7 stub — fallback when linkUtilization map empty
   fleetUsage(assignments: Assignment[], ts: number): number;
-  messageDeliveryTs(sentTs: number, from: string, to: string): number;
+  messageDeliveryTs(sentTs: number, from: string, to: string, queryTs?: number): number;
 }
 ```
 
@@ -384,7 +421,7 @@ number without per-link keys.
 
 ---
 
-## A4 — EnvMult factor registry (connects T2.6 → coverage)
+## A4 — EnvMult factor registry (connects T2.6 → coverage) ✅ COMPLETE
 
 Refactor `effectiveQuality` to use the extensible product from A0.2:
 
@@ -423,56 +460,78 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] **A1-revise:** 3D `spatial.ts`, cv6 state, slant range, z-up adapter — [A1_REVISE_3D.md](A1_REVISE_3D.md)
 - [x] T2.5 `MotionModel` + `ConstantVelocityModel` + search region via propagated Q
 - [x] T2.6 `EnvironmentContext` + `environment_samples` migration + `loadEnvironmentContext`
-- [ ] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables — **stub done in A0.7**
-- [ ] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
+- [x] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables + integration tests
+- [x] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
 - [ ] Kalman-readiness `test.todo` — **exists** in `estimator.test.ts`; implement in D6
-- [x] `pnpm verify` green; engine purity lint passes (~142 tests, June 2026)
+- [x] `pnpm verify` green; engine + rollup + planner purity lints pass (~181 tests, June 2026)
 
 ---
 
-# PHASE B — Guard tests (Tier 3 prerequisites)
+# PHASE B — Guard tests (Tier 3 prerequisites) ✅ COMPLETE
 
 Prove the rollup and planner DOFs are leaf-agnostic **before** building Tier 3 bodies.
 
-## B1 — Rollup-is-leaf-agnostic (T3.1 guard)
+## B1 — Rollup-is-leaf-agnostic (T3.1 guard) ✅
 
 Refactor `computeMissionCoverage` to dispatch:
 
 ```typescript
-computeTaskLeaf(task, …) → { cov_t, confidence, freshnessValues }
+computeTaskLeaf(task, …) → { cov_t, freshnessValues, infeasible }
 ```
 
-- Point tasks → existing point leaf (today's logic).
-- Unknown kinds → throw or return INFEASIBLE.
+- Point tasks → `computePointTaskLeaf` (existing logic).
+- AREA tasks → stub leaf returning `cov_t = 0.7` (replaced by `coverageVolume` in C1).
+- Unknown kinds → infeasible.
 
-**Guard test:** mix point tasks + stub area leaf returning constant `cov_t = 0.7`; assert `coverageMission`
-/ `tier` correct; assert rollup code never reads `task.target_x`, `task.kind`, or point-only fields.
+**Guard tests:** `guard.test.ts` — mixed point + area mission; POINT golden fixture; `lint-rollup-purity.mjs` enforces rollup does not read `task.target_x`, `task.demands`, etc.
 
-## B2 — EnvMult extensibility guard (T3.2 partial)
+## B2 — EnvMult extensibility guard (T3.2 partial) ✅
 
-Covered by A0.2 / A4 — retain as explicit gate: third stub factor is no-op.
+Explicit gate in `guard.test.ts` + full coverage in `envMult.test.ts` — third stub factor is no-op.
 
-## B3 — Opaque operating-point guard (T3.2 partial)
+## B3 — Opaque operating-point guard (T3.2 partial) ✅
 
-Covered by A0.8 — enum handle `{bearing: 45}` and `"SLOW"` through same `resolveOperatingPoint`; planner
-never branches on handle contents.
+`guard.test.ts` — JSON `{bearing: 45}` and `"SLOW"` through `resolveOperatingPoint`; `lint-planner-purity.mjs` forbids planner introspection of handle contents.
 
 **Commit boundary:** `B: tier-3 guard tests`.
 
 ---
 
-# PHASE C — Tier 3 bodies (new leaves above rollup)
+# PHASE C — Tier 3 bodies (new leaves above rollup) ← **NEXT**
 
-Only after Phase A + B are green.
+Only after Phase A + B are green. **Ready to start.**
 
-## C1 — Area / patrol coverage (T3.1 body) — **3D volume patrol**
+## C1 — Area / patrol coverage (T3.1 body) — **3D volume patrol (AABB v1)** ← **ACTIVE**
 
-- Add `task.kind: 'POINT' | 'AREA'` (default `POINT`).
-- AREA params: `{ footprint, z_min_m, z_max_m, required_quality, revisit_interval_s, cell_size_m? }` in **z-up** frame (`z_min_m` deeper / more negative than `z_max_m` for submerged layer, or positive band for air).
-- **`coverageVolume(…) → { cov_t, confidence }`** — fraction of **3D cells** covered/revisited, quality-weighted, temporal decay.
-- Planner: sweep-path / waypoint-sequence through volume (new move kind or operating-point extension).
+**Full agent pickup spec:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) — read before coding.
 
-**Tests:** coverage rises with cells covered; unrevisited cells decay; one vehicle cannot blanket volume instantly; rollup unchanged.
+Replace B1 **`computeAreaTaskLeafStub`** (`cov_t = 0.7`) with **`coverageVolume`** over a 3D cell grid.
+
+### Scope: C1a (this phase)
+
+| Item | Spec |
+|------|------|
+| **Footprint** | **AABB v1** via `Footprint` discriminated union (`kind: "aabb"`); store as **`footprint jsonb`** on `tasks` |
+| **Vertical band** | `z_min_m`, `z_max_m` (z-up); submerged: `z_min_m` more negative than `z_max_m` |
+| **Cells** | `discretizeFootprint()` → `VolumeCellSpec[]` with opaque **`cell_id`** |
+| **Quality** | **`effectiveQuality` per cell center** (inherits envMult / D1 salinity / currents via existing seams) |
+| **Visit memory** | **`task_volume_visits`** table; revisit decay using `revisit_interval_s` |
+| **Demands** | Reuse **`task_demands[]`** — same sensor axes as POINT; rollup min-across-axes unchanged |
+| **Planner sweep** | **Deferred C1b** — vehicles at current positions only |
+
+### Out of scope (defer)
+
+- Polygon / multipolygon footprint (`kind: "polygon"` — body swap later, no rollup rewrite)
+- Thermocline-dynamic z band (D1+; C1 uses fixed z band)
+- Planner auto-sweep paths (C1b)
+
+### Tests (register + guard)
+
+- Coverage rises as more cells visited; unrevisited cells decay after `revisit_interval_s`
+- One vehicle cannot instantly blanket volume (sensor range < volume extent)
+- **`guard.test.ts`** mixed POINT+AREA still passes; **`lint-rollup-purity.mjs`** unchanged
+
+**Commit boundary:** `C1: volume patrol (AABB)`.
 
 ## C2 — Directional sensors + pointing (T3.2 body)
 
@@ -579,14 +638,14 @@ All external data enters through **two ingestion surfaces** — never directly i
 | T2.4 | `Track`, `Observation`, `UncertaintyRegion` | A1 | ✅ tracks table + types |
 | T2.5 | `MotionModel` (6D SI) | A2 | ✅ |
 | T2.6 | `EnvironmentContext.sample(kind, Position3)` | A2 | ✅ |
-| T2.7 | `CommsModel` graph, `comms_links`, `comms_nodes` | A3 | Stub (A0.7) — graph pending |
+| T2.7 | `CommsModel` graph, `comms_links`, `comms_nodes` | A3 | ✅ |
 
 ## Tier 3 — Leaves (Phase C; guards in Phase B)
 
 | ID | Leaf | Guard | Body |
 |----|------|-------|------|
-| T3.1 | **Volume** patrol coverage | B1 rollup-is-leaf-agnostic | C1 (`coverageVolume`) |
-| T3.2 | Directional sensors + **3D pointing** | B2 envMult + B3 opaque handle | C2 (`inBeamRange`, elevation) |
+| T3.1 | **Volume** patrol coverage | B1 ✅ | C1 (`coverageVolume`, AABB — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
+| T3.2 | Directional sensors + **3D pointing** | B2 ✅ + B3 ✅ | C2 (`inBeamRange`, elevation) |
 
 ## Tier 1 — Bodies (Phase D)
 
@@ -595,11 +654,11 @@ All external data enters through **two ingestion surfaces** — never directly i
 | T1.1 | Threat routing; exposure/risk | A0.4 ✅ | D3 (S11) |
 | T1.2 | Spoofing | A0.1 ✅ | D4 (S12) |
 | T1.3 | LLM summaries | A0.6 ✅ | D5 (S13) |
-| T1.4 | Salinity / sea-state / fog | A0.2 ✅ (+ A4 registry pending) | D1 |
+| T1.4 | Salinity / sea-state / fog | A0.2 ✅ + A4 ✅ | D1 |
 | T1.5 | Dynamics-aware staleness | half_life field ✅ | D6 |
 | T1.6 | Continuous operating points | A0.8 ✅ | D6 |
 | T1.7 | Substitutable sensors | A0.3 ✅ | D6 |
-| T1.8 | Fleet comms contention | A0.7 ✅ + T2.7 | D2 |
+| T1.8 | Fleet comms contention | A0.7 ✅ + T2.7 ✅ | D2 |
 | T1.9 | Objective normalization | A0.4 ✅ | D6 |
 | T1.10 | MIP / column-generation | A0.5 ✅ | D6 |
 | — | Wind / current motion | T2.5 + T2.6 | D1 |
@@ -634,16 +693,23 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 | S13 LLM narration | D5 (requires A0.6) |
 | Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → D1 bodies |
 | Deferred: dynamics-aware staleness | T2.5 → D6 body |
-| Deferred: area coverage | B1 guard → C1 body |
-| Deferred: comms contention | T2.7 graph + A0.7 gate → D2 body |
+| Deferred: area coverage | B1 ✅ → C1 body |
+| Deferred: comms contention | T2.7 ✅ + A0.7 gate → D2 import body |
 | Deferred: MIP solver | A0.5 → D6 body |
 
 ---
 
 # Next action
 
-**Phase A3** — Comms graph per § A3 above: extend `CommsModel` with `route()` + `linkUtilization()`;
-add `comms_links` (+ optional `comms_nodes`) via Supabase MCP; wire db loader into `buildEngineInputFromDb`.
-Then **A4** (env factor registry). **Do not start Phase B** until A3 + A4 are green.
+**Phase C1a** — 3D volume patrol (AABB) per **[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)**:
 
-**DDL reminder:** use Supabase MCP `apply_migration` — not REST keys, not `pnpm db:setup` alone on remote.
+1. Tests first: `discretizeFootprint` (AABB) → `coverageVolume` → wire `computeTaskLeaf` AREA arm.
+2. DB: `tasks.kind`, `footprint jsonb`, z band, `task_volume_visits`; MCP `apply_migration`.
+3. Replace `computeAreaTaskLeafStub`; update `guard.test.ts` (AREA no longer constant 0.7).
+4. **Defer C1b** planner sweep and polygon footprint.
+
+Then **C2** (directional sensors). Phase D in any order after C.
+
+**Health check:** `pnpm db:verify` (15/15 after C1) · `pnpm verify` (~181+ tests) · rollup + planner lints green.
+
+**DDL reminder:** use Supabase MCP `apply_migration` — not REST keys alone on remote.

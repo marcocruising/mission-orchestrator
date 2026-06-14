@@ -1,4 +1,7 @@
 import type { SensorSpec, VehicleState } from "./coverage.js";
+import { salinityFactor } from "./envFactors/salinityFactor.js";
+import { seaStateFactor } from "./envFactors/seaStateFactor.js";
+import { fogFactor } from "./envFactors/fogFactor.js";
 
 /** Context passed to each environment multiplier factor. */
 export interface EnvMultContext {
@@ -21,7 +24,16 @@ export function motionEnvFactor(ctx: EnvMultContext): number {
   return envMultMotion(sensor.k_motion, vehicle.speed_kn, vehicle.top_speed_kn);
 }
 
-export const DEFAULT_ENV_FACTORS: EnvFactor[] = [motionEnvFactor];
+export { salinityFactor } from "./envFactors/salinityFactor.js";
+export { seaStateFactor } from "./envFactors/seaStateFactor.js";
+export { fogFactor } from "./envFactors/fogFactor.js";
+
+export const DEFAULT_ENV_FACTORS: EnvFactor[] = [
+  motionEnvFactor,
+  salinityFactor,
+  seaStateFactor,
+  fogFactor,
+];
 
 /** Product over extensible factor list — seam for salinity, sea-state, fog, beamGain. */
 export function envMult(factors: EnvFactor[], ctx: EnvMultContext): number {
