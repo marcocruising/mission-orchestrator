@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { scanBelief, shouldAlert, formatAlertSummary, attachMissionToDisruptions } from "./monitor.js";
+import { scanBelief, shouldAlert, attachMissionToDisruptions } from "./monitor.js";
+import { summarize } from "./summarize.js";
 import type { Belief } from "./types.js";
 import { setFact } from "./types.js";
 
@@ -34,8 +35,8 @@ describe("Monitor", () => {
     expect(shouldAlert(0.2, 0.4)).toBe(false);
   });
 
-  it("template summary from mission state row", () => {
-    const text = formatAlertSummary({
+  it("summarize produces alert text from mission state row", () => {
+    const text = summarize({
       mission_id: "m1",
       tier: "AT_RISK",
       cov_now: 0.4,
@@ -43,8 +44,9 @@ describe("Monitor", () => {
       impact: 0.45,
       salience: 0.5,
     });
-    expect(text).toContain("m1");
-    expect(text).toContain("AT_RISK");
+    expect(text).toContain("Mission m1");
+    expect(text).toContain("tier AT_RISK");
+    expect(text).toContain("coverage 40%");
   });
 
   it("attaches mission ids to disruptions", () => {

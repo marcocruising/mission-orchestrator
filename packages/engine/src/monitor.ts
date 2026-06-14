@@ -95,18 +95,3 @@ export function attachMissionToDisruptions(
 export function shouldAlert(salience: number, sigma: number): boolean {
   return salience >= sigma;
 }
-
-export function formatAlertSummary(state: {
-  mission_id: string;
-  tier: string;
-  cov_now: number;
-  cov_baseline: number;
-  impact: number;
-  salience: number;
-}): string {
-  return (
-    `[ALERT] Mission ${state.mission_id}: tier ${state.tier}, ` +
-    `coverage ${(state.cov_now * 100).toFixed(0)}% (baseline ${(state.cov_baseline * 100).toFixed(0)}%), ` +
-    `impact ${state.impact.toFixed(2)}, salience ${state.salience.toFixed(2)}`
-  );
-}

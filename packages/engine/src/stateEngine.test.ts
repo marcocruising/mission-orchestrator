@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   recomputeMissionStates,
+  defaultResolveOperatingPoint,
   defaultResolveSpeed,
   type MissionDef,
 } from "./stateEngine.js";
@@ -84,7 +85,7 @@ function demoFixture(): ReturnType<typeof buildEngineInput> {
     ],
     now: 200,
     covBaselines: new Map([["m1", 0.95], ["m2", 0.8]]),
-    resolveSpeed: defaultResolveSpeed,
+    resolveOperatingPoint: defaultResolveOperatingPoint,
   });
 }
 

@@ -4,6 +4,7 @@ import {
   checkCapacityGate,
   checkFleetCommsGate,
 } from "./stateEngine.js";
+import { computeObjective } from "./objective.js";
 
 export type PlanMove =
   | { kind: "reassign"; asset_id: string; task_id: string; operating_point: string }
@@ -22,6 +23,17 @@ export interface PlanEval {
   cascades: { mission_id: string; delta: number }[];
   assumptions: string[];
   n_moves: number;
+}
+
+export interface PlannerRequest {
+  input: EngineInput;
+  affectedMissionIds: string[];
+  baselineCov: Record<string, number>;
+}
+
+/** Seam for swapping heuristic planner vs MIP / column-generation solver (T1.10). */
+export interface Planner {
+  replan(request: PlannerRequest): PlanEval[];
 }
 
 function cloneAssignments(assignments: Assignment[]): Assignment[] {
@@ -59,42 +71,45 @@ function evaluatePlan(
 ): PlanEval | null {
   const newAssignments = applyMovesToAssignments(input.assignments, plan.moves);
   if (!checkCapacityGate(newAssignments, input.missions, input.sensors)) return null;
-  if (!checkFleetCommsGate(newAssignments)) return null;
+  if (!checkFleetCommsGate(newAssignments, input.commsModel, input.now, input.config.comms_budget)) return null;
 
   const sandboxInput: EngineInput = { ...input, assignments: newAssignments };
   const states = recomputeMissionStates(sandboxInput, input.now);
   const cov_by_mission: Record<string, number> = {};
   const cascades: { mission_id: string; delta: number }[] = [];
 
-  let obj = 0;
   for (const s of states) {
     cov_by_mission[s.mission_id] = s.cov_now;
-    const mission = input.missions.find((m) => m.id === s.mission_id)!;
-    obj += mission.priority * s.cov_now;
     const base = baselineCov[s.mission_id] ?? s.cov_now;
     if (s.cov_now < base - 0.01) {
       cascades.push({ mission_id: s.mission_id, delta: s.cov_now - base });
     }
   }
 
-  obj -= input.config.lambda_move * plan.moves.length;
+  const exposure = 0;
+  const risk = 0;
+
+  const objective = computeObjective({
+    missions: input.missions,
+    covByMission: cov_by_mission,
+    nMoves: plan.moves.length,
+    exposure,
+    risk,
+    config: input.config,
+  });
 
   return {
     plan_id: plan.plan_id,
-    objective: obj,
+    objective,
     cov_by_mission,
-    total_exposure: 0,
+    total_exposure: exposure,
     cascades,
     assumptions: ["exposure=0", "risk=0", "belief frozen at eval time"],
     n_moves: plan.moves.length,
   };
 }
 
-export function generateCandidates(
-  input: EngineInput,
-  affectedMissionIds: string[],
-  baselineCov: Record<string, number>
-): PlanEval[] {
+function replanDefault({ input, affectedMissionIds, baselineCov }: PlannerRequest): PlanEval[] {
   const plans: Plan[] = [{ plan_id: "do-nothing", moves: [] }];
 
   const affectedTasks = input.missions
@@ -135,6 +150,26 @@ export function generateCandidates(
   }
 
   return evals.sort((a, b) => b.objective - a.objective);
+}
+
+export const defaultPlanner: Planner = {
+  replan: replanDefault,
+};
+
+/** Minimal planner body for conformance tests — do-nothing only, same evaluation path. */
+export const stubPlanner: Planner = {
+  replan({ input, baselineCov }) {
+    const ev = evaluatePlan({ plan_id: "do-nothing", moves: [] }, input, baselineCov);
+    return ev ? [ev] : [];
+  },
+};
+
+export function generateCandidates(
+  input: EngineInput,
+  affectedMissionIds: string[],
+  baselineCov: Record<string, number>
+): PlanEval[] {
+  return defaultPlanner.replan({ input, affectedMissionIds, baselineCov });
 }
 
 /** Sandbox re-eval must match live path numbers (P2). */

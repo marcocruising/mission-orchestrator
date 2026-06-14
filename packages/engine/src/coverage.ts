@@ -1,3 +1,9 @@
+import {
+  envMult,
+  DEFAULT_ENV_FACTORS,
+  type EnvFactor,
+} from "./envMult.js";
+
 export const INFEASIBLE = Symbol("INFEASIBLE");
 export type Infeasible = typeof INFEASIBLE;
 
@@ -36,26 +42,19 @@ export function rangeMult(rangeKm: number, maxRangeKm: number, p = 0.5): Quality
   return Math.pow(1 - rangeKm / maxRangeKm, p);
 }
 
-/** envMult today: e^(−k·speed/vmax) — seam for additional factors */
-export function envMultMotion(kMotion: number, speedKn: number, topSpeedKn: number): number {
-  if (topSpeedKn <= 0) return 1;
-  return Math.exp(-kMotion * (speedKn / topSpeedKn));
-}
-
-export function envMult(kMotion: number, speedKn: number, topSpeedKn: number): number {
-  return envMultMotion(kMotion, speedKn, topSpeedKn);
-}
+export { envMultMotion } from "./envMult.js";
 
 export function effectiveQuality(
   sensor: SensorSpec,
   task: TaskTarget,
   vehicle: VehicleState,
-  p = 0.5
+  p = 0.5,
+  envFactors: EnvFactor[] = DEFAULT_ENV_FACTORS
 ): QualityResult {
   const R = Math.hypot(task.target_x - vehicle.x_km, task.target_y - vehicle.y_km);
   const rm = rangeMult(R, sensor.max_range_km, p);
   if (isInfeasible(rm)) return INFEASIBLE;
-  const em = envMult(sensor.k_motion, vehicle.speed_kn, vehicle.top_speed_kn);
+  const em = envMult(envFactors, { sensor, vehicle });
   return sensor.base_quality * rm * em;
 }
 
@@ -73,15 +72,34 @@ export function satisfaction(
   return Math.min(sum / demand, 1);
 }
 
-/** cov_t = min over required sensor axes */
-export function coverageTask(axisSats: QualityResult[]): QualityResult {
+/** Combines per-axis satisfaction values into a single task coverage score. */
+export type AxisAggregator = (axisSats: number[]) => number;
+
+/** Liebig / bundle-of-sensors: weakest axis caps the task (P7). */
+export function minAxisAggregator(axisSats: number[]): number {
+  return Math.min(...axisSats);
+}
+
+/**
+ * Stub aggregator for seam tests — arithmetic mean (less pessimistic than min).
+ * Future substitutable-sensor body replaces this with a real soft-min (T1.7).
+ */
+export function meanAxisAggregator(axisSats: number[]): number {
+  return axisSats.reduce((sum, v) => sum + v, 0) / axisSats.length;
+}
+
+/** cov_t = aggregate over required sensor axes (default: min). */
+export function coverageTask(
+  axisSats: QualityResult[],
+  aggregator: AxisAggregator = minAxisAggregator
+): QualityResult {
   if (axisSats.length === 0) return 1;
-  let min = 1;
+  const numeric: number[] = [];
   for (const s of axisSats) {
     if (isInfeasible(s)) return INFEASIBLE;
-    min = Math.min(min, s);
+    numeric.push(s);
   }
-  return min;
+  return aggregator(numeric);
 }
 
 export interface WeightedTask {

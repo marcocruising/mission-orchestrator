@@ -8,7 +8,7 @@ import type {
   EngineInput,
   EngineConfig,
 } from "@mission-orchestrator/engine";
-import { buildEngineInput, defaultResolveSpeed } from "@mission-orchestrator/engine";
+import { buildEngineInput } from "@mission-orchestrator/engine";
 import { loadBelief } from "./belief.js";
 
 export async function loadAssets(client: SupabaseClient): Promise<Asset[]> {
@@ -97,6 +97,7 @@ export async function loadConfig(client: SupabaseClient): Promise<EngineConfig> 
     lambda_move: map.get("lambda_move") ?? 0.05,
     lambda_exp: map.get("lambda_exp") ?? 0.3,
     lambda_risk: map.get("lambda_risk") ?? 0.2,
+    comms_budget: map.get("comms_budget") ?? 1_000_000,
   };
 }
 
@@ -137,7 +138,6 @@ export async function buildEngineInputFromDb(
     config,
     now,
     covBaselines,
-    resolveSpeed: defaultResolveSpeed,
   });
 }
 

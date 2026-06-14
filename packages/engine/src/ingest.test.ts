@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { ingestReports, mergeReportIntoBelief } from "./ingest.js";
+import { ingestReports, mergeReportIntoBelief, reportToFact } from "./ingest.js";
+import { reconcile } from "./reconcile.js";
 import { Simulator } from "./simulator.js";
 import type { Asset, Belief } from "./types.js";
 import { getFact } from "./types.js";
@@ -12,6 +13,38 @@ const asset: Asset = {
   top_speed_kn: 8,
   gps_dependent: false,
 };
+
+describe("ingest uses reconcile (A0.1)", () => {
+  it("conflicting reports for same field go through reconcile — newer value and confidence win", () => {
+    const belief = ingestReports([
+      {
+        ts: 100,
+        asset_id: "uuv-1",
+        field: "x_km",
+        value: 1,
+        confidence: 0.95,
+      },
+      {
+        ts: 200,
+        asset_id: "uuv-1",
+        field: "x_km",
+        value: 7.5,
+        confidence: 0.4,
+      },
+    ]);
+    const fact = getFact(belief, "uuv-1", "x_km");
+    expect(fact?.value).toBe(7.5);
+    expect(fact?.confidence).toBe(0.4);
+  });
+
+  it("mergeReportIntoBelief matches reconcile(reportToFact) for each step", () => {
+    const report = { ts: 50, asset_id: "a", field: "x_km", value: 3, confidence: 0.55 };
+    const existing = reportToFact({ ts: 10, asset_id: "a", field: "x_km", value: 1, confidence: 0.9 });
+    const belief = new Map([["a:x_km", existing]]);
+    const after = mergeReportIntoBelief(belief, report);
+    expect(getFact(after, "a", "x_km")).toEqual(reconcile(existing, reportToFact(report)));
+  });
+});
 
 describe("ingestReports", () => {
   it("last-write-by-ts wins", () => {

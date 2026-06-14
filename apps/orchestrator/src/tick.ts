@@ -3,7 +3,7 @@ import {
   scanBelief,
   attachMissionToDisruptions,
   shouldAlert,
-  formatAlertSummary,
+  summarize,
   generateCandidates,
   applyPlan,
   ingestReports,
@@ -71,7 +71,7 @@ export async function runTick(tick: number, simReports?: ReturnType<Simulator["t
   const alerts: TickResult["alerts"] = [];
 
   for (const s of states.filter((x) => shouldAlert(x.salience, input.config.sigma))) {
-    const summary = formatAlertSummary(s);
+    const summary = summarize(s);
     const shown = s.salience >= input.config.sigma;
     alerts.push({ shown, summary, mission_id: s.mission_id, salience: s.salience });
     await client.from("alert_log").insert({

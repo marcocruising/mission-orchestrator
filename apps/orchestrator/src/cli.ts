@@ -6,7 +6,6 @@ import {
   beliefToFacts,
   recomputeMissionStates,
   buildEngineInput,
-  defaultResolveSpeed,
 } from "@mission-orchestrator/engine";
 import {
   createServiceClient,
@@ -55,7 +54,6 @@ async function inspectLocal(tick: number): Promise<void> {
     ],
     now: tick,
     covBaselines: new Map([["mission-track", 0.95], ["mission-patrol", 0.8]]),
-    resolveSpeed: defaultResolveSpeed,
   });
   const states = recomputeMissionStates(input, tick);
   console.log("\n=== Mission state ===");

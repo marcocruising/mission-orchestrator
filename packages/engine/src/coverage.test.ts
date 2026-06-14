@@ -8,11 +8,13 @@ import {
   tier,
   confidenceMission,
   rangeMult,
-  envMultMotion,
   isInfeasible,
+  minAxisAggregator,
+  meanAxisAggregator,
   type SensorSpec,
   type VehicleState,
 } from "./coverage.js";
+import { envMultMotion } from "./envMult.js";
 import { freshness } from "./freshness.js";
 
 const passiveAcoustic: SensorSpec = {
@@ -86,6 +88,37 @@ describe("coverageTask (min within task)", () => {
     const satEo = satisfaction([q2 as number], 0.5);
     const cov = coverageTask([satAcoustic as number, satEo as number]);
     expect(cov).toBeGreaterThan(0.5);
+  });
+});
+
+describe("coverageTask aggregator seam (A0.3)", () => {
+  it("default aggregator is min — explicit minAxisAggregator matches omitting the argument", () => {
+    const axes = [0.9, 0.3];
+    expect(coverageTask(axes)).toBe(0.3);
+    expect(coverageTask(axes, minAxisAggregator)).toBe(0.3);
+  });
+
+  it("swapping to meanAxisAggregator raises task coverage when one axis is weak", () => {
+    const axes = [0.9, 0.3];
+    const withMin = coverageTask(axes, minAxisAggregator);
+    const withMean = coverageTask(axes, meanAxisAggregator);
+    expect(withMin).toBe(0.3);
+    expect(withMean).toBeCloseTo(0.6);
+    expect(withMean as number).toBeGreaterThan(withMin as number);
+  });
+
+  it("mean aggregator does not ignore the weak axis entirely", () => {
+    expect(coverageTask([1.0, 0.0], meanAxisAggregator)).toBeCloseTo(0.5);
+    expect(coverageTask([1.0, 0.0], meanAxisAggregator)).toBeLessThan(1.0);
+  });
+
+  it("infeasible axis short-circuits before aggregator runs", () => {
+    expect(coverageTask([0.8, INFEASIBLE], meanAxisAggregator)).toBe(INFEASIBLE);
+  });
+
+  it("empty axis list returns 1 regardless of aggregator", () => {
+    expect(coverageTask([], minAxisAggregator)).toBe(1);
+    expect(coverageTask([], meanAxisAggregator)).toBe(1);
   });
 });
 

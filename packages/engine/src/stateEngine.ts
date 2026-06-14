@@ -12,6 +12,8 @@ import {
   type SensorSpec,
 } from "./coverage.js";
 import { freshness } from "./freshness.js";
+import type { CommsModel } from "./commsModel.js";
+import type { OperatingPointResolver } from "./operatingPoint.js";
 
 export interface TaskDemand {
   sensor: string;
@@ -61,6 +63,7 @@ export interface EngineConfig {
   lambda_move: number;
   lambda_exp: number;
   lambda_risk: number;
+  comms_budget: number;
 }
 
 export const DEFAULT_CONFIG: EngineConfig = {
@@ -74,6 +77,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   lambda_move: 0.05,
   lambda_exp: 0.3,
   lambda_risk: 0.2,
+  comms_budget: 1_000_000,
 };
 
 export interface MissionStateRow {
@@ -99,8 +103,10 @@ export interface EngineInput {
   now: number;
   /** Sticky baselines keyed by mission_id */
   covBaselines: Map<string, number>;
-  /** Resolved speed per assignment from operating_point */
-  resolveSpeed: (asset: Asset, operatingPoint: string) => number;
+  /** Resolved operating point per assignment (opaque handle — T3.2 / A0.8). */
+  resolveOperatingPoint: OperatingPointResolver;
+  /** Comms link model for fleet gate and ingest delay (T2.7 / A0.7). */
+  commsModel: CommsModel;
 }
 
 function factNum(belief: Belief, assetId: string, field: string, fallback: number): number {
@@ -164,8 +170,8 @@ export function computeTaskCoverage(
     for (const asn of taskAssignments) {
       const asset = assetMap.get(asn.asset_id);
       if (!asset) continue;
-      const speed = input.resolveSpeed(asset, asn.operating_point);
-      const vehicle = vehicleFromBelief(input.belief, asset, speed);
+      const resolved = input.resolveOperatingPoint(asset, asn.operating_point);
+      const vehicle = vehicleFromBelief(input.belief, asset, resolved.speed_kn);
       if (!checkHardConstraints(asset, task, vehicle)) continue;
       const sensor = sensorsByAsset.get(asn.asset_id)?.find((s) => s.sensor === demand.sensor);
       if (!sensor) continue;
@@ -264,20 +270,17 @@ export function recomputeMissionStates(input: EngineInput, tick: number): Missio
   });
 }
 
-/** Default speed resolver — extended in S10 for operating points. */
-export function defaultResolveSpeed(asset: Asset, operatingPoint: string): number {
-  switch (operatingPoint) {
-    case "STATION":
-      return 0;
-    case "SLOW":
-      return asset.top_speed_kn * 0.25;
-    case "FAST":
-      return asset.top_speed_kn;
-    default: {
-      const n = Number(operatingPoint);
-      return Number.isFinite(n) ? n : asset.top_speed_kn * 0.5;
-    }
-  }
+/** Default operating-point resolver — extended in S10; bearing via JSON handle in A0.8. */
+export { defaultResolveOperatingPoint, defaultResolveSpeed } from "./operatingPoint.js";
+
+/** Fleet comms gate: fleetUsage must fit within budget (P5 hard gate). */
+export function checkFleetCommsGate(
+  assignments: Assignment[],
+  commsModel: CommsModel,
+  ts: number,
+  budget: number
+): boolean {
+  return commsModel.fleetUsage(assignments, ts) <= budget;
 }
 
 /** Hard capacity gate: Σ demand ≤ capacity on every axis per vehicle. */
@@ -305,10 +308,4 @@ export function checkCapacityGate(
     if (demand > sensor.base_quality) return false;
   }
   return true;
-}
-
-/** Non-binding fleet comms gate (shape for future bandwidth contention). */
-export function checkFleetCommsGate(assignments: Assignment[]): boolean {
-  const BIG = 1_000_000;
-  return assignments.length <= BIG;
 }

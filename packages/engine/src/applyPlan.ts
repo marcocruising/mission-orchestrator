@@ -4,8 +4,9 @@ import {
   checkCapacityGate,
   checkFleetCommsGate,
   DEFAULT_CONFIG,
-  defaultResolveSpeed,
+  defaultResolveOperatingPoint,
 } from "./stateEngine.js";
+import { staticCommsModel } from "./commsModel.js";
 import { applyMovesToAssignments, type Plan } from "./planner.js";
 export type { Plan, PlanMove } from "./planner.js";
 
@@ -31,7 +32,7 @@ export function applyPlan(
   if (!checkCapacityGate(newAssignments, input.missions, input.sensors)) {
     return { ok: false, reason: "Capacity gate failed at commit time" };
   }
-  if (!checkFleetCommsGate(newAssignments)) {
+  if (!checkFleetCommsGate(newAssignments, input.commsModel, input.now, input.config.comms_budget)) {
     return { ok: false, reason: "Fleet comms gate failed at commit time" };
   }
 
@@ -52,14 +53,16 @@ export function applyPlan(
 }
 
 export function buildEngineInput(
-  partial: Omit<EngineInput, "resolveSpeed" | "config"> & {
+  partial: Omit<EngineInput, "resolveOperatingPoint" | "commsModel" | "config"> & {
     config?: Partial<EngineInput["config"]>;
-    resolveSpeed?: EngineInput["resolveSpeed"];
+    resolveOperatingPoint?: EngineInput["resolveOperatingPoint"];
+    commsModel?: EngineInput["commsModel"];
   }
 ): EngineInput {
   return {
     ...partial,
     config: { ...DEFAULT_CONFIG, ...partial.config },
-    resolveSpeed: partial.resolveSpeed ?? defaultResolveSpeed,
+    resolveOperatingPoint: partial.resolveOperatingPoint ?? defaultResolveOperatingPoint,
+    commsModel: partial.commsModel ?? staticCommsModel,
   };
 }

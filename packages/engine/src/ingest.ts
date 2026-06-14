@@ -1,5 +1,6 @@
 import type { Belief, Fact, FactSource } from "./types.js";
 import { beliefKey } from "./types.js";
+import { reconcile } from "./reconcile.js";
 
 export interface Report {
   ts: number;
@@ -23,18 +24,8 @@ const DEFAULTS: IngestDefaults = {
   half_life_s: 120,
 };
 
-/** Last-write-by-ts merge for a single report into belief (immutable). */
-export function mergeReportIntoBelief(
-  belief: Belief,
-  report: Report,
-  defaults: IngestDefaults = DEFAULTS
-): Belief {
-  const key = beliefKey(report.asset_id, report.field);
-  const existing = belief.get(key);
-  if (existing && existing.ts > report.ts) return belief;
-
-  const next = new Map(belief);
-  next.set(key, {
+export function reportToFact(report: Report, defaults: IngestDefaults = DEFAULTS): Fact {
+  return {
     asset_id: report.asset_id,
     field: report.field,
     value: report.value,
@@ -42,7 +33,23 @@ export function mergeReportIntoBelief(
     source: report.source ?? defaults.source,
     confidence: report.confidence ?? defaults.confidence,
     half_life_s: report.half_life_s ?? defaults.half_life_s,
-  });
+  };
+}
+
+/** Merge a single report into belief via reconcile (immutable). */
+export function mergeReportIntoBelief(
+  belief: Belief,
+  report: Report,
+  defaults: IngestDefaults = DEFAULTS
+): Belief {
+  const key = beliefKey(report.asset_id, report.field);
+  const existing = belief.get(key);
+  const incoming = reportToFact(report, defaults);
+  const merged = reconcile(existing, incoming);
+  if (existing && merged === existing) return belief;
+
+  const next = new Map(belief);
+  next.set(key, merged);
   return next;
 }
 
