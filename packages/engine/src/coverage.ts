@@ -23,6 +23,7 @@ export interface SensorSpec {
   base_quality: number;
   max_range_km: number;
   k_motion: number;
+  beam_half_angle_deg?: number;
 }
 
 export interface VehicleState {
@@ -34,6 +35,10 @@ export interface VehicleState {
   z_m?: number;
   speed_kn: number;
   top_speed_kn: number;
+  /** Sensor boresight azimuth — from resolved operating point (C2). */
+  bearing_deg?: number;
+  /** Sensor boresight elevation — from resolved operating point (C2). */
+  elevation_deg?: number;
 }
 
 export interface TaskTarget {
@@ -67,7 +72,13 @@ export function effectiveQuality(
   const R = slantRangeKm(vehicle, task);
   const rm = rangeMult(R, sensor.max_range_km, p);
   if (isInfeasible(rm)) return INFEASIBLE;
-  const em = envMult(envFactors, { sensor, vehicle, environment: environmentContext });
+  const targetPos = taskTargetToPosition3(task);
+  const em = envMult(envFactors, {
+    sensor,
+    vehicle,
+    environment: environmentContext,
+    target: targetPos,
+  });
   return sensor.base_quality * rm * em;
 }
 

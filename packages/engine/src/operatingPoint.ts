@@ -1,9 +1,11 @@
 import type { Asset } from "./types.js";
+import { parsePatrolHandle } from "./volume/patrolSweep.js";
 
 /** Resolved operating point — opaque handle expanded by CapacityModel body (T1.6 / C2). */
 export interface ResolvedOperatingPoint {
   speed_kn: number;
   bearing_deg?: number;
+  elevation_deg?: number;
   raw_handle: string;
 }
 
@@ -29,13 +31,25 @@ export function defaultResolveOperatingPoint(
   asset: Asset,
   operatingPoint: string
 ): ResolvedOperatingPoint {
+  if (parsePatrolHandle(operatingPoint)) {
+    return {
+      speed_kn: resolveSpeedKn(asset, "SLOW"),
+      raw_handle: operatingPoint,
+    };
+  }
+
   if (operatingPoint.startsWith("{")) {
     try {
-      const parsed = JSON.parse(operatingPoint) as { bearing?: number; speed?: string };
+      const parsed = JSON.parse(operatingPoint) as {
+        bearing?: number;
+        elevation?: number;
+        speed?: string;
+      };
       const speedHandle = typeof parsed.speed === "string" ? parsed.speed : "SLOW";
       return {
         speed_kn: resolveSpeedKn(asset, speedHandle),
         bearing_deg: typeof parsed.bearing === "number" ? parsed.bearing : undefined,
+        elevation_deg: typeof parsed.elevation === "number" ? parsed.elevation : undefined,
         raw_handle: operatingPoint,
       };
     } catch {

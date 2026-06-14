@@ -49,6 +49,7 @@ function baseInput(overrides: {
     assignments:
       overrides.assignments ?? [
         { id: "a1", asset_id: "uuv-1", task_id: "t-point", operating_point: "SLOW", issued_ts: 0 },
+        { id: "a2", asset_id: "uuv-1", task_id: "t-area", operating_point: "SLOW", issued_ts: 0 },
       ],
     now: 200,
     covBaselines: new Map([["m-mix", 0.9]]),
@@ -70,41 +71,55 @@ describe("B1 rollup-is-leaf-agnostic guard (T3.1 prerequisite)", () => {
     constraints: [],
   };
 
-  const areaStubTask: TaskDef = {
+  const areaTask: TaskDef = {
     id: "t-area",
     mission_id: "m-mix",
     w_t: 1,
     kind: "AREA",
-    target_x: 9999,
-    target_y: 9999,
-    target_depth_m: 9999,
+    target_x: 0,
+    target_y: 0,
+    target_depth_m: 50,
     window_end_s: null,
-    demands: [],
+    demands: [{ sensor: "passive_acoustic", min_quality: 0.5 }],
     constraints: [],
+    area: {
+      footprint: {
+        kind: "aabb",
+        center: { x_m: 0, y_m: 0 },
+        half_extent_m: { x: 500, y: 500 },
+      },
+      z_min_m: -60,
+      z_max_m: -40,
+      revisit_interval_s: 600,
+      cell_size_m: 500,
+    },
   };
 
   const mixedMission: MissionDef = {
     id: "m-mix",
     name: "Mixed",
     priority: 0.8,
-    tasks: [pointTask, areaStubTask],
+    tasks: [pointTask, areaTask],
   };
 
-  it("AREA stub leaf returns constant cov_t=0.7 regardless of bogus target", () => {
+  it("AREA volume leaf returns dynamic cov_t from patrol geometry", () => {
     const input = baseInput({ missions: [mixedMission] });
-    const leaf = computeTaskLeaf(areaStubTask, input.assignments, input);
+    const leaf = computeTaskLeaf(areaTask, input.assignments, input);
     expect(leaf.infeasible).toBe(false);
-    expect(leaf.cov_t).toBe(0.7);
+    expect(leaf.cov_t).toBeGreaterThan(0);
+    expect(leaf.cov_t).not.toBe(0.7);
+    expect(leaf.volumeVisits?.length).toBeGreaterThan(0);
   });
 
   it("mission rollup weights point + area leaves without reading point-only fields", () => {
     const input = baseInput({ missions: [mixedMission] });
     const pointLeaf = computeTaskLeaf(pointTask, input.assignments, input);
+    const areaLeaf = computeTaskLeaf(areaTask, input.assignments, input);
     const { cov_m, confidence } = computeMissionCoverage(mixedMission, input.assignments, input);
 
     const expectedCovM = coverageMission([
       { w_t: pointTask.w_t, cov_t: pointLeaf.cov_t },
-      { w_t: areaStubTask.w_t, cov_t: 0.7 },
+      { w_t: areaTask.w_t, cov_t: areaLeaf.cov_t },
     ]);
     expect(cov_m).toBeCloseTo(expectedCovM, 10);
     expect(confidence).toBeGreaterThan(0);

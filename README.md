@@ -1,9 +1,8 @@
 # Mission Orchestrator — Build README (for Claude Code)
 
 > **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
-> **Phase A0–A4 complete** (seams, 3D cv6, MotionModel, EnvironmentContext, Comms graph, env factor registry).
-> **Phase B guard tests complete.** **Active work: Phase C1a** — 3D AABB volume patrol
-> ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)). Runbook: [HANDOVER.md](HANDOVER.md).
+> **Phase A0–A4** and **Phase B** complete. **Phase C complete** (C1a volume patrol, C1b planner sweep, C2 directional sensors).
+> **Active work: Phase D** — Tier 1 bodies (imported env/comms, threats, spoofing, LLM). Runbook: [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
 
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
@@ -115,7 +114,8 @@ Created across steps, not up front. Types are guidance; meaning is the point.
 **`assets`** *(static spec)* — `id, kind(UAV|USV|UUV), domain(air|surface|subsurface),
 depth_rating_m, top_speed_kn, gps_dependent bool`.
 **`asset_sensors`** *(the capability vector, one row per sensor)* — `asset_id, sensor, base_quality
-[0–1], max_range_km, k_motion`. *The vector is the set of rows for an asset; never collapse to a scalar.*
+[0–1], max_range_km, k_motion, beam_half_angle_deg nullable` *(omit beam = omnidirectional; C2)*.
+*The vector is the set of rows for an asset; never collapse to a scalar.*
 **`world_truth`** *(sim-only ground truth, per tick)* — `tick, asset_id, x_km, y_km, depth_m, speed_kn,
 heading_deg, battery_pct, health, comms_up bool, gps_ok bool`.
 **`reports`** *(simulated received packets; may drop/delay/drift)* — `ts, asset_id, field, value jsonb`.
@@ -123,9 +123,10 @@ heading_deg, battery_pct, health, comms_up bool, gps_ok bool`.
 source(telemetry|sensor|estimate|operator), confidence [0–1], half_life_s`. Keyed `(asset_id, field)`.
 *Confidence at time `ts`; `freshness(now)` decays it.*
 **`missions`** — `id, name, type, priority W_m [0–1], human_desc`.
-**`tasks`** — `id, mission_id, w_t [0–1], target_x, target_y, target_depth_m, window_end_s nullable`.
+**`tasks`** — `id, mission_id, w_t [0–1], target_x, target_y, target_depth_m, window_end_s nullable, kind(POINT|AREA), footprint jsonb, z_min_m, z_max_m, revisit_interval_s, cell_size_m` *(AREA patrol — C1)*.
 **`task_demands`** *(the demand bundle — graded amounts only)* — `task_id, sensor, min_quality [0–1]`.
 *This holds "how much"; hard requirements go in the next table (P5).*
+**`task_volume_visits`** *(C1 patrol memory)* — `task_id, cell_id, last_visit_ts, peak_quality`.
 **`task_constraints`** *(hard gates — pass/fail)* — `task_id, kind(depth|domain|los|capacity), param jsonb`.
 **`assignments`** *(current who-does-what; what a plan mutates)* — `id, asset_id, task_id,
 operating_point, issued_ts`.
@@ -280,7 +281,11 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 | Salinity / sea-state / fog | `envMult` factor list (A0.2 + **A4 ✅**) | D1 | ✅ stubs registered (=1.0) |
 | Dynamics-aware staleness | `Fact.half_life` → `MotionModel` body (A2) | D6 | ✅ shape installed |
 | Continuous operating points | `resolveOperatingPoint` (A0.8) | D6 | ✅ seam installed |
-| Area / sector-blanketing coverage | `computeTaskLeaf` + B1 guard → **C1a AABB** ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) | C1a | B1 ✅ · C1a next |
+| Area / sector-blanketing coverage | `computeTaskLeaf` + volume leaf | **C1a ✅** · C1b ✅ ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
+| Directional sensors + pointing | `beamGainFactor`, `checkPointingGate` | **C2 ✅** |
+| Scan time / dwell per cell | `VolumeVisitRecord` + `cellVisitScore` body | D6 / C1-future | seam ready |
+| Multi-leg patrol routes | `patrolSweepCellCandidates` body | C1-future | handles + overrides ready |
+| Polygon footprint | `discretizeFootprint` body swap | C1-future | `Footprint` union ready |
 | Substitutable sensors | `coverageTask` aggregator (A0.3) | D6 | ✅ seam installed |
 | Real fleet/comms contention | `CommsModel` graph (**A3 ✅**) | D2 import body | ✅ graph + gate · ingest delay pending D2 |
 | Objective unit normalization | `computeObjective` + config λ's (A0.4) | D6 | ✅ seam installed |
@@ -294,7 +299,6 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0** for a greenfield build. **For current work**, start with **Phase C1a** in
-[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) (AABB volume patrol: `Footprint` seam, `coverageVolume`, `task_volume_visits`).
-Summary in [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md). Apply DDL via **Supabase MCP `apply_migration`**;
-verify with `pnpm db:verify` (15/15 tables after C1) and `pnpm verify` (~181+ tests + rollup/planner lints).
+**Start with S0** for a greenfield build. **For current work**, start with **Phase D** in
+[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (recommended: **D1** imported environmental data).
+Verify with `pnpm db:verify` (**15/15** tables) and `pnpm verify` (~**200** tests + rollup/planner/engine lints).

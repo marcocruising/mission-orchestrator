@@ -21,5 +21,11 @@ export * from "./track.js";
 export * from "./searchRegion.js";
 export * from "./environmentContext.js";
 export * from "./motionModel.js";
+export * from "./volume/footprint.js";
+export * from "./volume/coverageVolume.js";
+export * from "./volume/patrolSweep.js";
+export * from "./vehicleState.js";
+export * from "./sensors/beamGeometry.js";
+export * from "./pointingGate.js";
 
 export const ENGINE_VERSION = "1.0.0";

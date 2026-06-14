@@ -3,6 +3,7 @@ import {
   recomputeMissionStates,
   checkCapacityGate,
   checkFleetCommsGate,
+  checkPointingGate,
   DEFAULT_CONFIG,
   defaultResolveOperatingPoint,
 } from "./stateEngine.js";
@@ -36,6 +37,18 @@ export function applyPlan(
   }
   if (!checkFleetCommsGate(newAssignments, input.commsModel, input.now, input.config.comms_budget)) {
     return { ok: false, reason: "Fleet comms gate failed at commit time" };
+  }
+  if (
+    !checkPointingGate(
+      newAssignments,
+      input.missions,
+      input.sensors,
+      input.belief,
+      input.assets,
+      input.resolveOperatingPoint
+    )
+  ) {
+    return { ok: false, reason: "Pointing contention gate failed at commit time" };
   }
 
   const sandbox: EngineInput = { ...input, assignments: newAssignments };

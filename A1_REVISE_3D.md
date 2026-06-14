@@ -1,8 +1,7 @@
 # A1-revise — 3D spatial model (reference — COMPLETE)
 
 **Status:** **COMPLETE** (June 2026)  
-**Next work:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) · [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (A0–A4 + B done)  
-**Commit target:** `A1-revise: 3D spatial model (cv6, slant range, z-up adapter)`
+**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **Phase D** (A0–A4 + B + C done)
 
 Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
 
@@ -104,9 +103,10 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 | **A2** ✅ | `MotionModel` on 6D SI state; `EnvironmentContext.sample(kind, Position3)` |
 | **A4** ✅ | `DEFAULT_ENV_FACTORS` with stub salinity/sea-state/fog |
 | **B1** ✅ | `computeTaskLeaf` dispatch; rollup leaf-agnostic lint |
-| **C1a** ← next | **AABB volume patrol** — `Footprint` seam + `discretizeFootprint`; polygon later as body swap. Spec: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
-| **C1b** | Planner sweep paths (deferred) |
-| **C2** | Needs `inBeamRange` / `elevation_deg` on operating point |
+| **C1a** ✅ | **AABB volume patrol** — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
+| **C1b** ✅ | Planner patrol sweep — `patrol:` handles, `planningOverrides` |
+| **C2** ✅ | Directional sensors — `beamGainFactor`, `checkPointingGate`, `beam_half_angle_deg` |
+| **D** ← next | Imported data, threats, LLM, Kalman, scan-time bodies |
 | **D3** | Threats as 2D polygons + z bounds |
 | **D5** | LLM formats altitude vs depth from signed z |
 
@@ -127,4 +127,4 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 
 Same as README PRIME DIRECTIVE: tests first → minimal impl → green suite → stop → wait for confirmation.
 
-Phase A + B complete — proceed to **C1a** per [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
+Phase A + B + C complete — proceed to **Phase D** per [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).

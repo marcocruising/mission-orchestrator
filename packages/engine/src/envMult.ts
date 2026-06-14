@@ -2,12 +2,15 @@ import type { SensorSpec, VehicleState } from "./coverage.js";
 import { salinityFactor } from "./envFactors/salinityFactor.js";
 import { seaStateFactor } from "./envFactors/seaStateFactor.js";
 import { fogFactor } from "./envFactors/fogFactor.js";
+import { beamGainFactor } from "./envFactors/beamGainFactor.js";
 
 /** Context passed to each environment multiplier factor. */
 export interface EnvMultContext {
   sensor: SensorSpec;
   vehicle: VehicleState;
   environment?: import("./environmentContext.js").EnvironmentContext;
+  /** Target position for directional beam factors (C2). */
+  target?: import("./spatial.js").Position3;
 }
 
 /** Graded multiplier factor: m(context, sensor) → [0, 1] typically. */
@@ -33,6 +36,7 @@ export const DEFAULT_ENV_FACTORS: EnvFactor[] = [
   salinityFactor,
   seaStateFactor,
   fogFactor,
+  beamGainFactor,
 ];
 
 /** Product over extensible factor list — seam for salinity, sea-state, fog, beamGain. */

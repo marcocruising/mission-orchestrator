@@ -26,6 +26,8 @@ export interface AssetSensor {
   base_quality: number;
   max_range_km: number;
   k_motion: number;
+  /** Half-power beamwidth in degrees — omit for omnidirectional (C2). */
+  beam_half_angle_deg?: number;
 }
 
 export type FactSource = "telemetry" | "sensor" | "estimate" | "operator";

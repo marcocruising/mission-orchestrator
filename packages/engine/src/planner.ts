@@ -3,8 +3,10 @@ import {
   recomputeMissionStates,
   checkCapacityGate,
   checkFleetCommsGate,
+  checkPointingGate,
 } from "./stateEngine.js";
 import { computeObjective } from "./objective.js";
+import { planningOverridesForAssignments, patrolSweepMovesForTask } from "./volume/patrolSweep.js";
 
 export type PlanMove =
   | { kind: "reassign"; asset_id: string; task_id: string; operating_point: string }
@@ -71,9 +73,28 @@ function evaluatePlan(
 ): PlanEval | null {
   const newAssignments = applyMovesToAssignments(input.assignments, plan.moves);
   if (!checkCapacityGate(newAssignments, input.missions, input.sensors)) return null;
-  if (!checkFleetCommsGate(newAssignments, input.commsModel, input.now, input.config.comms_budget)) return null;
+  if (!checkFleetCommsGate(newAssignments, input.commsModel, input.now, input.config.comms_budget)) {
+    return null;
+  }
+  if (
+    !checkPointingGate(
+      newAssignments,
+      input.missions,
+      input.sensors,
+      input.belief,
+      input.assets,
+      input.resolveOperatingPoint
+    )
+  ) {
+    return null;
+  }
 
-  const sandboxInput: EngineInput = { ...input, assignments: newAssignments };
+  const planningOverrides = planningOverridesForAssignments(input, newAssignments);
+  const sandboxInput: EngineInput = {
+    ...input,
+    assignments: newAssignments,
+    planningOverrides,
+  };
   const states = recomputeMissionStates(sandboxInput, input.now);
   const cov_by_mission: Record<string, number> = {};
   const cascades: { mission_id: string; delta: number }[] = [];
@@ -104,7 +125,9 @@ function evaluatePlan(
     cov_by_mission,
     total_exposure: exposure,
     cascades,
-    assumptions: ["exposure=0", "risk=0", "belief frozen at eval time"],
+    assumptions: planningOverrides
+      ? ["exposure=0", "risk=0", "belief frozen; patrol sandbox uses hypothetical cell positions"]
+      : ["exposure=0", "risk=0", "belief frozen at eval time"],
     n_moves: plan.moves.length,
   };
 }
@@ -132,6 +155,18 @@ function replanDefault({ input, affectedMissionIds, baselineCov }: PlannerReques
           plan_id: `op-${asset.id}-${op}`,
           moves: [{ kind: "set_operating_point", asset_id: asset.id, operating_point: op }],
         });
+      }
+    }
+
+    if (task.kind === "AREA" && task.area) {
+      for (const asn of input.assignments.filter((a) => a.task_id === task.id)) {
+        for (const move of patrolSweepMovesForTask(input, task, asn.asset_id)) {
+          const safeId = move.operating_point.replace(/:/g, "_");
+          plans.push({
+            plan_id: `patrol-${asn.asset_id}-${safeId}`,
+            moves: [move],
+          });
+        }
       }
     }
   }

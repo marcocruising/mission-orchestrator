@@ -1,9 +1,9 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 · **A0–A4** · **B** complete · **C–D pending**
+**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** complete · **Phase D next**
 
-> **New agent pickup:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) (full spec) · [HANDOVER.md](HANDOVER.md) § *Agent pickup*.
-> Health: `pnpm db:verify` (14/14 → **15/15 after C1**) · `pnpm verify` (~181 tests · 1 Kalman `test.todo`).
+> **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* · canonical plan below · C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
+> Health: `pnpm db:verify` (**15/15** tables) · `pnpm verify` (~**200** tests · 1 Kalman `test.todo`).
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -74,9 +74,24 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A4** | `envFactors/salinityFactor.ts` | ✅ Done | Stub → 1.0; samples `salinity_psu` at vehicle position |
 | **A4** | `envFactors/seaStateFactor.ts` | ✅ Done | Stub → 1.0; samples `sea_state_hs_m` |
 | **A4** | `envFactors/fogFactor.ts` | ✅ Done | Stub → 1.0; samples `fog_vis_km` |
-| **A4** | `DEFAULT_ENV_FACTORS` | ✅ Done | `[motion, salinity, seaState, fog]` — no behavior change until D1 |
+| **A4** | `DEFAULT_ENV_FACTORS` | ✅ Done | `[motion, salinity, seaState, fog, beamGain]` — salinity/sea/fog stubs until D1; beamGain no-op when omnidirectional |
 
-**Commit boundary:** `A4: envMult factor registry`.
+**Commit boundary:** `A4: envMult factor registry` · **C2** added `beamGainFactor`.
+
+### Progress log (Phase C — Tier 3 bodies)
+
+| Step | Module / table | Status | Notes |
+|------|----------------|--------|-------|
+| **C1a / T3.1** | `volume/footprint.ts`, `coverageVolume.ts` | ✅ Done | AABB discretizer; per-cell `effectiveQuality`; linear revisit decay; `task_volume_visits` |
+| **C1a wire** | `stateEngine.ts`, `packages/db/volume.ts` | ✅ Done | `computeAreaTaskLeaf` → `coverageVolume`; tick persists visits |
+| **C1a DDL** | `c1_volume_patrol` | ✅ Done | `tasks.kind`, `footprint jsonb`, z band; **15/15** tables |
+| **C1b** | `volume/patrolSweep.ts` | ✅ Done | Opaque `patrol:cell_id` handles; `planningOverrides` sandbox-only; max 3 cell candidates |
+| **C1b wire** | `planner.ts`, `vehicleState.ts` | ✅ Done | Patrol plans beat do-nothing when vehicle outside volume; B3 lint green |
+| **C2 / T3.2** | `sensors/beamGeometry.ts`, `beamGainFactor.ts` | ✅ Done | 3D cone; `EnvMultContext.target`; omnidirectional when `beam_half_angle_deg` omitted |
+| **C2 wire** | `pointingGate.ts`, `operatingPoint.ts` | ✅ Done | `elevation_deg` on resolver; `checkPointingGate` on plan eval + commit |
+| **C2 DDL** | `c2_directional_sensors` | ✅ Done | `asset_sensors.beam_half_angle_deg` nullable |
+
+**Commit boundaries:** `C1: volume patrol (AABB)` · `C1b: patrol sweep` · `C2: directional sensors`.
 
 ### Progress log (Phase B — guard tests)
 
@@ -110,8 +125,12 @@ These came from the post-S10 gap analysis and Phase A0 implementation. **Read be
 | W10 | **One step at a time** | Green suite between steps; don't batch A1 sub-shapes without tests |
 | W11 | **3D spatial seam** | All engine math uses `Position3` + z-up; **only `spatial.ts`** converts legacy `depth_m` (`z_m = -depth_m`) |
 | W12 | **Horizontal bearing ≠ 3D** | `horizontalBearingMeasurement` is azimuth only; full triangulation needs elevation (C2/D6) |
-| W13 | **Slant range seam** | Use `rangeM()` / `rangeKm()` in coverage — not raw `hypot(dx, dy)`; C2 may need `inBeamRange` body |
+| W13 | **Slant range seam** | Use `rangeM()` / `rangeKm()` in coverage — not raw `hypot(dx, dy)` |
 | W14 | **Volume patrol (C1)** | AREA tasks patrol a **3D AABB** (`Footprint` seam); polygon = later body swap on `discretizeFootprint` — see [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
+| W15 | **`planningOverrides` is sandbox-only** | Live tick uses belief position only; patrol handles affect coverage only when planner sets hypothetical cell positions |
+| W16 | **Patrol handle prefix is `patrol:`** (lowercase) | Parsed in `parsePatrolHandle` / `resolveOperatingPoint` — planner passes opaque string, never cell geometry |
+| W17 | **Directional = optional column** | Omit `beam_half_angle_deg` → omnidirectional; existing passive_acoustic demo unchanged |
+| W18 | **Scan time / dwell deferred** | Extend `VolumeVisitRecord` (+ `dwell_s`) and/or `ObjectiveTerm[]` — do not rewrite rollup or `discretizeFootprint` |
 
 ---
 
@@ -142,8 +161,8 @@ does not reshape `cov_t → cov_m → tier` or `MissionState` columns.
 ```
 Phase A — Structural foundation (T2 shapes + T1 seam retrofits)   ✅ COMPLETE
 Phase B — Guard tests (T3 prerequisites)                          ✅ COMPLETE
-Phase C — Tier 3 bodies (area patrol, directional sensors)        ← NEXT
-Phase D — Tier 1 bodies (threats, spoofing, LLM, imported-data factors, solver)
+Phase C — Tier 3 bodies (volume patrol, patrol sweep, directional sensors)  ✅ COMPLETE
+Phase D — Tier 1 bodies (threats, spoofing, LLM, imported-data factors, solver)  ← NEXT
 ```
 
 Do not start Phase C until Phase A + B are green. Imported environmental/comms data lands in Phase A
@@ -433,7 +452,7 @@ const ENV_FACTORS: EnvFactor[] = [
   salinityFactor,         // stub → 1.0 until import
   seaStateFactor,         // stub → 1.0
   fogFactor,              // stub → 1.0
-  // beamGainFactor added in Phase C (T3.2)
+  beamGainFactor,         // C2 — no-op when beam_half_angle_deg omitted
 ];
 ```
 
@@ -463,7 +482,10 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables + integration tests
 - [x] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
 - [ ] Kalman-readiness `test.todo` — **exists** in `estimator.test.ts`; implement in D6
-- [x] `pnpm verify` green; engine + rollup + planner purity lints pass (~181 tests, June 2026)
+- [x] `pnpm verify` green; engine + rollup + planner purity lints pass (~200 tests, June 2026)
+- [x] **C1a** volume patrol AABB + `task_volume_visits` — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)
+- [x] **C1b** planner patrol sweep (`patrol:` handles + `planningOverrides`)
+- [x] **C2** directional sensors (`beamGainFactor`, `checkPointingGate`, `beam_half_angle_deg`)
 
 ---
 
@@ -497,51 +519,30 @@ Explicit gate in `guard.test.ts` + full coverage in `envMult.test.ts` — third 
 
 ---
 
-# PHASE C — Tier 3 bodies (new leaves above rollup) ← **NEXT**
+# PHASE C — Tier 3 bodies (new leaves above rollup) ✅ COMPLETE
 
-Only after Phase A + B are green. **Ready to start.**
+## C1 — Area / patrol coverage (T3.1 body) ✅
 
-## C1 — Area / patrol coverage (T3.1 body) — **3D volume patrol (AABB v1)** ← **ACTIVE**
+**Archive spec:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)
 
-**Full agent pickup spec:** [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) — read before coding.
+| Sub-phase | Shipped | Notes |
+|-----------|---------|-------|
+| **C1a** | `coverageVolume`, `footprint`, `task_volume_visits` | AABB v1; mean cell scores per axis; linear revisit decay |
+| **C1b** | `patrolSweep.ts`, `planningOverrides` | Finite patrol candidates (≤3 cells); sandbox hypothetical position; no route optimizer |
 
-Replace B1 **`computeAreaTaskLeafStub`** (`cov_t = 0.7`) with **`coverageVolume`** over a 3D cell grid.
+**Still deferred (body swaps, not rewrites):** polygon footprint · thermocline z band · multi-leg sweep paths · scan/dwell time on `VolumeVisitRecord`
 
-### Scope: C1a (this phase)
+## C2 — Directional sensors + pointing (T3.2 body) ✅
 
-| Item | Spec |
-|------|------|
-| **Footprint** | **AABB v1** via `Footprint` discriminated union (`kind: "aabb"`); store as **`footprint jsonb`** on `tasks` |
-| **Vertical band** | `z_min_m`, `z_max_m` (z-up); submerged: `z_min_m` more negative than `z_max_m` |
-| **Cells** | `discretizeFootprint()` → `VolumeCellSpec[]` with opaque **`cell_id`** |
-| **Quality** | **`effectiveQuality` per cell center** (inherits envMult / D1 salinity / currents via existing seams) |
-| **Visit memory** | **`task_volume_visits`** table; revisit decay using `revisit_interval_s` |
-| **Demands** | Reuse **`task_demands[]`** — same sensor axes as POINT; rollup min-across-axes unchanged |
-| **Planner sweep** | **Deferred C1b** — vehicles at current positions only |
+| Item | Shipped |
+|------|---------|
+| **Beam geometry** | `sensors/beamGeometry.ts` — `beamGain`, `inBeamRange`, `losAnglesDeg`, 3D separation |
+| **EnvMult factor** | `beamGainFactor` in `DEFAULT_ENV_FACTORS`; `EnvMultContext.target` for 3D LOS |
+| **Pointing** | `bearing_deg` + `elevation_deg` on `ResolvedOperatingPoint`; JSON handle `{bearing, elevation?, speed?}` |
+| **Contention gate** | `checkPointingGate` — conflicting bearings on one directional sensor → plan infeasible |
+| **DB** | `asset_sensors.beam_half_angle_deg` optional — omit for omnidirectional (backward compatible) |
 
-### Out of scope (defer)
-
-- Polygon / multipolygon footprint (`kind: "polygon"` — body swap later, no rollup rewrite)
-- Thermocline-dynamic z band (D1+; C1 uses fixed z band)
-- Planner auto-sweep paths (C1b)
-
-### Tests (register + guard)
-
-- Coverage rises as more cells visited; unrevisited cells decay after `revisit_interval_s`
-- One vehicle cannot instantly blanket volume (sensor range < volume extent)
-- **`guard.test.ts`** mixed POINT+AREA still passes; **`lint-rollup-purity.mjs`** unchanged
-
-**Commit boundary:** `C1: volume patrol (AABB)`.
-
-## C2 — Directional sensors + pointing (T3.2 body)
-
-- `beamGain(θ)` / **`inBeamRange(sensor, pose, target)`** — 3D geometry; slant range alone is insufficient.
-- Pointing: **`bearing_deg` + `elevation_deg`** (or 3D pointing handle) via `resolveOperatingPoint` — **register shape extension**.
-- Contention: one sensor, one pointing vector at a time.
-
-**Tests:** target outside beam → q ≈ 0; two tasks at different bearings conflict on one sensor.
-
-**Commit boundary:** one commit per Tier 3 body.
+**Tests:** `directional.test.ts`, `beamGeometry.test.ts`, `patrolSweep.test.ts`; B1/B2/B3 guards still green.
 
 ---
 
@@ -644,8 +645,9 @@ All external data enters through **two ingestion surfaces** — never directly i
 
 | ID | Leaf | Guard | Body |
 |----|------|-------|------|
-| T3.1 | **Volume** patrol coverage | B1 ✅ | C1 (`coverageVolume`, AABB — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
-| T3.2 | Directional sensors + **3D pointing** | B2 ✅ + B3 ✅ | C2 (`inBeamRange`, elevation) |
+| T3.1 | **Volume** patrol coverage | B1 ✅ | C1a ✅ (`coverageVolume`, AABB — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
+| T3.1b | Planner patrol sweep | B3 ✅ | C1b ✅ (`patrol:` handles, `planningOverrides`) |
+| T3.2 | Directional sensors + **3D pointing** | B2 ✅ + B3 ✅ | C2 ✅ (`beamGainFactor`, `checkPointingGate`, elevation) |
 
 ## Tier 1 — Bodies (Phase D)
 
@@ -693,7 +695,8 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 | S13 LLM narration | D5 (requires A0.6) |
 | Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → D1 bodies |
 | Deferred: dynamics-aware staleness | T2.5 → D6 body |
-| Deferred: area coverage | B1 ✅ → C1 body |
+| Deferred: area coverage | B1 ✅ → **C1a ✅** · C1b ✅ |
+| Deferred: directional sensors | B2/B3 ✅ → **C2 ✅** |
 | Deferred: comms contention | T2.7 ✅ + A0.7 gate → D2 import body |
 | Deferred: MIP solver | A0.5 → D6 body |
 
@@ -701,15 +704,19 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 # Next action
 
-**Phase C1a** — 3D volume patrol (AABB) per **[C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)**:
+**Phase D** — Tier 1 bodies behind frozen seams. Pick any order; recommended first wins for demo value:
 
-1. Tests first: `discretizeFootprint` (AABB) → `coverageVolume` → wire `computeTaskLeaf` AREA arm.
-2. DB: `tasks.kind`, `footprint jsonb`, z band, `task_volume_visits`; MCP `apply_migration`.
-3. Replace `computeAreaTaskLeafStub`; update `guard.test.ts` (AREA no longer constant 0.7).
-4. **Defer C1b** planner sweep and polygon footprint.
+| Priority | Phase | Why |
+|----------|-------|-----|
+| **D1** | Imported env data (salinity, sea-state, fog, currents) | Shapes + stubs ready; `environment_samples` table exists |
+| **D2** | Comms import + `ingestReports` pathDelay | Graph + gate shipped in A3 |
+| **D3** | Threats / exposure / risk (S11) | `ObjectiveTerm[]` wired (=0 today) |
+| **D5** | LLM narration (S13) | `summarize()` seam ready |
+| **D4** | Spoofing (S12) | `reconcile()` seam ready |
+| **D6** | Kalman, MIP, scan-time/dwell, polygon footprint | Body swaps on existing seams |
 
-Then **C2** (directional sensors). Phase D in any order after C.
+**Still deferred within C (future body swaps):** C1-polygon · C1-thermocline · multi-hop patrol routes · per-cell `dwell_s` / scan time.
 
-**Health check:** `pnpm db:verify` (15/15 after C1) · `pnpm verify` (~181+ tests) · rollup + planner lints green.
+**Health check:** `pnpm db:verify` (**15/15**) · `pnpm verify` (~**200** tests) · rollup + planner + engine lints green.
 
 **DDL reminder:** use Supabase MCP `apply_migration` — not REST keys alone on remote.

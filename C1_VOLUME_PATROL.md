@@ -1,11 +1,10 @@
-# C1 — 3D volume patrol (AABB v1) — agent pickup spec
+# C1 — 3D volume patrol (AABB v1) — archive spec
 
-**Status:** **READY TO START** (June 2026)  
-**Prerequisites:** Phase A0–A4 ✅ · Phase B guards ✅  
+**Status:** **COMPLETE** (June 2026) — C1a + C1b shipped  
+**Prerequisites:** Phase A0–A4 ✅ · Phase B guards ✅ · C2 directional sensors ✅  
 **Full register:** [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § C1 · Runbook: [HANDOVER.md](HANDOVER.md)
 
-> **Agent:** Read this file end-to-end before writing code. Implement **C1a only** (coverage math + DB + tests).
-> **Defer C1b** (planner sweep paths) unless explicitly requested.
+> **Agent:** This file documents the **C1 design** for reference. Phase C is complete; new work starts at **Phase D** ([HANDOVER.md](HANDOVER.md)).
 
 ---
 
@@ -27,7 +26,7 @@ Replace the B1 **AREA stub leaf** (`cov_t = 0.7` constant) with a real **`covera
 | **Visit memory** | **`task_volume_visits`** table, loaded on `EngineInput` | Required for revisit decay across ticks; engine stays pure |
 | **Quality per cell** | **`effectiveQuality(sensor, cellCenterAsTarget, vehicle)`** | Reuses envMult/MotionModel seams; D1 salinity/currents apply without volume rewrite |
 | **Z frame** | **z-up** SI meters in engine (`z_m`); DB may use `depth_m` at load boundary | Same as [A1_REVISE_3D.md](A1_REVISE_3D.md) |
-| **Planner sweep** | **Deferred (C1b)** | C1a: vehicles at **current** belief positions update coverage |
+| **Planner sweep** | **C1b ✅** | `patrol:cell_id` handles; `planningOverrides` sandbox-only; ≤3 cell candidates |
 | **Thermocline / isoclines** | **Deferred (D1+)** | C1 uses **fixed** `z_min_m` / `z_max_m`; env affects quality via existing `EnvironmentContext` |
 
 ---
@@ -198,48 +197,59 @@ For each **sensor demand** on the task (same loop pattern as `computePointTaskLe
 
 ---
 
-## Implementation steps (one commit boundary: `C1: volume patrol (AABB)`)
-
-| Step | Work | Done when |
-|------|------|-----------|
-| **C1.1** | Types: `Footprint`, `VolumeCellSpec`, `AreaTaskParams`; `discretizeFootprint` AABB + tests | Unit tests: cell count, ids stable, z band |
-| **C1.2** | `coverageVolume.ts` + tests (no DB) | Register tests green on synthetic fixture |
-| **C1.3** | Wire `computeAreaTaskLeaf` → `coverageVolume`; remove stub | `guard.test.ts` updated — AREA no longer constant 0.7 |
-| **C1.4** | DB migration + `loadAreaTaskParams` / visit load-save in `packages/db` | `db:verify` 15/15 |
-| **C1.5** | `EngineInput` + tick persistence for visit records | Orchestrator tick writes visits after recompute |
-| **C1.6** | Demo seed: one AREA mission (optional) | `inspect` shows AREA cov_t ≠ 0.7 |
-
-**Stop after C1.6 green.** Do not start C2 or C1b planner sweep.
+| Step | Work | Status |
+|------|------|--------|
+| **C1.1** | Types: `Footprint`, `VolumeCellSpec`, `AreaTaskParams`; `discretizeFootprint` AABB + tests | ✅ |
+| **C1.2** | `coverageVolume.ts` + tests (no DB) | ✅ |
+| **C1.3** | Wire `computeAreaTaskLeaf` → `coverageVolume`; remove stub | ✅ |
+| **C1.4** | DB migration + visit load-save in `packages/db` | ✅ 15/15 tables |
+| **C1.5** | `EngineInput.volumeVisits` + tick persistence | ✅ |
+| **C1.6** | Demo seed: `mission-volume` / `task-volume` | ✅ |
+| **C1b** | `patrolSweep.ts`, `planningOverrides`, planner candidates | ✅ |
 
 ---
 
-## Files to create / modify
+## C1b — Planner patrol sweep (shipped)
 
-| File | Action |
-|------|--------|
+Minimal functional sweep — **not** a route optimizer. Preserves seams for future scan time / multi-leg paths.
+
+| Item | Implementation |
+|------|----------------|
+| **Handle format** | `patrol:{cell_id}` — opaque to planner (B3 lint) |
+| **Candidate selection** | Up to 3 lowest-scoring / unvisited cells via `patrolSweepCellCandidates` |
+| **Sandbox eval** | `EngineInput.planningOverrides: Map<asset_id, Position3>` — cell center as hypothetical position |
+| **Live tick** | Never sets `planningOverrides` — belief position only |
+| **Resolver** | `parsePatrolHandle` in `operatingPoint.ts` → SLOW listen speed |
+
+**Future body swaps (no rollup rewrite):** multi-leg waypoints · travel-time cost in `ObjectiveTerm[]` · per-cell `dwell_s` on `VolumeVisitRecord` · scan completion in `cellVisitScore`.
+
+---
+
+## Files shipped
+
+| File | Purpose |
+|------|---------|
 | `packages/engine/src/volume/footprint.ts` | `Footprint`, `discretizeFootprint` (aabb) |
-| `packages/engine/src/volume/coverageVolume.ts` | Main body |
-| `packages/engine/src/volume/*.test.ts` | Tests first |
-| `packages/engine/src/stateEngine.ts` | Replace `computeAreaTaskLeafStub` |
-| `packages/engine/src/index.ts` | Export if needed |
+| `packages/engine/src/volume/coverageVolume.ts` | Volume leaf body |
+| `packages/engine/src/volume/patrolSweep.ts` | C1b patrol handles + planning overrides |
+| `packages/engine/src/vehicleState.ts` | `buildVehicleState` — belief + pointing + override |
+| `packages/engine/src/volume/*.test.ts` | C1a tests |
+| `packages/engine/src/volume/patrolSweep.test.ts` | C1b tests |
+| `packages/engine/src/stateEngine.ts` | `computeAreaTaskLeaf`, `volumeVisits`, `planningOverrides` |
 | `packages/db/src/volume.ts` | Load/save visits, parse footprint jsonb |
-| `packages/db/src/missions.ts` | Load `kind`, area params; extend `buildEngineInputFromDb` |
-| `supabase/migrations/…_c1_volume_patrol.sql` | Local DDL source |
-| `scripts/verify-supabase.mjs` | + `task_volume_visits` |
-| `packages/engine/src/guard.test.ts` | Update AREA expectations (no longer 0.7 stub) |
-
-**Do not modify:** `computeMissionCoverage` rollup logic · `lint-rollup-purity.mjs` should pass without changes.
+| `supabase/migrations/20250614000009_c1_volume_patrol.sql` | DDL |
+| `packages/engine/src/directional.test.ts` | C1b planner + C2 integration tests |
 
 ---
 
-## Deferred (explicit — not C1 scope)
+## Deferred (explicit — future body swaps)
 
 | ID | Scope |
 |----|--------|
-| **C1b** | Planner sweep / waypoint `operating_point` sequences through volume |
 | **C1-polygon** | `{ kind: "polygon" }` in `Footprint` + discretizer body |
 | **C1-thermocline** | Dynamic z band from `temperature_c` env field |
-| **C2** | `inBeamRange` — directional sensors (separate phase) |
+| **C1-routes** | Multi-leg patrol paths, travel-time objective |
+| **C1-scan** | Per-cell `dwell_s` / scan time on `VolumeVisitRecord` |
 
 ---
 
@@ -256,11 +266,21 @@ For each **sensor demand** on the task (same loop pattern as `computePointTaskLe
 
 ```bash
 pnpm db:verify && pnpm verify
-# 15/15 tables · ~185+ tests · lint-rollup + lint-planner + lint-engine green
+# 15/15 tables · ~200 tests · lint-rollup + lint-planner + lint-engine green
 ```
+
+---
+
+## Learnings (C1 implementation)
+
+1. **AREA tasks need assignments** on the AREA `task_id` — otherwise `cov_t = 0` (guard tests use dual assignment for mixed missions).
+2. **Revisit decay tests** must move the vehicle out of range on the stale tick, or fresh visits mask decay.
+3. **Cell count** — half_extent 500 m + cell_size 500 m → 1 cell per axis; use 250 m half_extent for single-cell fixtures.
+4. **`planningOverrides`** must never leak to live tick — only planner sandbox in `evaluatePlan`.
+5. **Footprint jsonb** stores km at DB boundary (`center_x_km`, `half_width_km`); engine uses meters via `parseFootprintJson`.
 
 ---
 
 ## Agent workflow
 
-Same as README PRIME DIRECTIVE: **tests first** → minimal impl → green suite → commit `C1: volume patrol (AABB)` → stop.
+Phase C complete. For new work see [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § Phase D.

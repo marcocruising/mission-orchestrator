@@ -31,6 +31,7 @@ const tables = [
   "environment_samples",
   "comms_nodes",
   "comms_links",
+  "task_volume_visits",
 ];
 
 let ok = 0;

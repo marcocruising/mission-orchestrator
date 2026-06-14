@@ -47,6 +47,13 @@ describe("resolveOperatingPoint (A0.8 — opaque handle seam)", () => {
     expect(fromJson.bearing_deg).toBe(90);
   });
 
+  it("patrol handle resolves to SLOW listen speed without exposing cell id to planner", () => {
+    const resolved = defaultResolveOperatingPoint(asset, "patrol:c:001:002:000");
+    expect(resolved.speed_kn).toBe(2);
+    expect(resolved.raw_handle).toBe("patrol:c:001:002:000");
+    expect(resolved.bearing_deg).toBeUndefined();
+  });
+
   it("resolveSpeedKn matches speed_kn from defaultResolveOperatingPoint", () => {
     for (const handle of ["STATION", "SLOW", "FAST", "4"]) {
       expect(resolveSpeedKn(asset, handle)).toBe(

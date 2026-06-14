@@ -12,6 +12,7 @@ import { buildEngineInput } from "@mission-orchestrator/engine";
 import { loadBelief } from "./belief.js";
 import { loadEnvironmentContext } from "./environment.js";
 import { loadCommsModel } from "./comms.js";
+import { loadVolumeVisits, parseAreaTaskParams } from "./volume.js";
 
 export async function loadAssets(client: SupabaseClient): Promise<Asset[]> {
   const { data, error } = await client.from("assets").select("*");
@@ -35,6 +36,8 @@ export async function loadSensors(client: SupabaseClient): Promise<AssetSensor[]
     base_quality: Number(r.base_quality),
     max_range_km: Number(r.max_range_km),
     k_motion: Number(r.k_motion),
+    beam_half_angle_deg:
+      r.beam_half_angle_deg != null ? Number(r.beam_half_angle_deg) : undefined,
   }));
 }
 
@@ -54,21 +57,38 @@ export async function loadMissions(client: SupabaseClient): Promise<MissionDef[]
     priority: Number(m.priority),
     tasks: (tasks ?? [])
       .filter((t) => t.mission_id === m.id)
-      .map((t) => ({
-        id: t.id,
-        mission_id: t.mission_id,
-        w_t: Number(t.w_t),
-        target_x: Number(t.target_x),
-        target_y: Number(t.target_y),
-        target_depth_m: Number(t.target_depth_m),
-        window_end_s: t.window_end_s != null ? Number(t.window_end_s) : null,
-        demands: (demands ?? [])
-          .filter((d) => d.task_id === t.id)
-          .map((d) => ({ sensor: d.sensor, min_quality: Number(d.min_quality) })),
-        constraints: (constraints ?? [])
-          .filter((c) => c.task_id === t.id)
-          .map((c) => ({ kind: c.kind, param: c.param as Record<string, unknown> })),
-      })),
+      .map((t) => {
+        const kind = (t.kind as "POINT" | "AREA" | undefined) ?? "POINT";
+        const area =
+          kind === "AREA"
+            ? parseAreaTaskParams({
+                footprint: t.footprint,
+                z_min_m: t.z_min_m,
+                z_max_m: t.z_max_m,
+                revisit_interval_s: t.revisit_interval_s,
+                cell_size_m: t.cell_size_m,
+                target_x: Number(t.target_x),
+                target_y: Number(t.target_y),
+              })
+            : undefined;
+        return {
+          id: t.id,
+          mission_id: t.mission_id,
+          w_t: Number(t.w_t),
+          kind,
+          target_x: Number(t.target_x),
+          target_y: Number(t.target_y),
+          target_depth_m: Number(t.target_depth_m),
+          window_end_s: t.window_end_s != null ? Number(t.window_end_s) : null,
+          demands: (demands ?? [])
+            .filter((d) => d.task_id === t.id)
+            .map((d) => ({ sensor: d.sensor, min_quality: Number(d.min_quality) })),
+          constraints: (constraints ?? [])
+            .filter((c) => c.task_id === t.id)
+            .map((c) => ({ kind: c.kind, param: c.param as Record<string, unknown> })),
+          area,
+        };
+      }),
   }));
 }
 
@@ -120,7 +140,7 @@ export async function buildEngineInputFromDb(
   client: SupabaseClient,
   now: number
 ): Promise<EngineInput> {
-  const [belief, assets, sensors, missions, assignments, config, covBaselines, environmentContext, commsModel] =
+  const [belief, assets, sensors, missions, assignments, config, covBaselines, environmentContext, commsModel, volumeVisits] =
     await Promise.all([
       loadBelief(client),
       loadAssets(client),
@@ -131,6 +151,7 @@ export async function buildEngineInputFromDb(
       loadCovBaselines(client),
       loadEnvironmentContext(client, now),
       loadCommsModel(client, now),
+      loadVolumeVisits(client),
     ]);
 
   return buildEngineInput({
@@ -144,6 +165,7 @@ export async function buildEngineInputFromDb(
     covBaselines,
     environmentContext,
     commsModel,
+    volumeVisits,
   });
 }
 

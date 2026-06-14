@@ -16,6 +16,16 @@ import type { CommsModel } from "./commsModel.js";
 import type { OperatingPointResolver } from "./operatingPoint.js";
 import type { EnvironmentContext } from "./environmentContext.js";
 import type { MotionModel } from "./motionModel.js";
+import {
+  coverageVolume,
+  type AreaTaskParams,
+  type VolumeVisitRecord,
+} from "./volume/coverageVolume.js";
+import type { Position3 } from "./spatial.js";
+import { buildVehicleState } from "./vehicleState.js";
+import { checkPointingGate } from "./pointingGate.js";
+
+export { checkPointingGate };
 
 export interface TaskDemand {
   sensor: string;
@@ -41,7 +51,11 @@ export interface TaskDef {
   window_end_s: number | null;
   demands: TaskDemand[];
   constraints: TaskConstraint[];
+  /** Volume patrol params — present when kind === 'AREA'. */
+  area?: AreaTaskParams;
 }
+
+export type { AreaTaskParams, VolumeVisitRecord };
 
 export interface MissionDef {
   id: string;
@@ -117,24 +131,15 @@ export interface EngineInput {
   environmentContext: EnvironmentContext;
   /** Dead-reckoning / search-region propagation (T2.5 / A2). */
   motionModel: MotionModel;
+  /** Prior volume visit memory keyed by task_id (C1 / T3.1). */
+  volumeVisits?: Map<string, VolumeVisitRecord[]>;
+  /** Sandbox-only hypothetical positions for patrol sweep eval (C1b) — never set on live tick. */
+  planningOverrides?: Map<string, Position3>;
 }
 
 function factNum(belief: Belief, assetId: string, field: string, fallback: number): number {
   const v = getFact(belief, assetId, field)?.value;
   return typeof v === "number" ? v : fallback;
-}
-
-function vehicleFromBelief(belief: Belief, asset: Asset, speedKn: number): VehicleState {
-  const zFact = getFact(belief, asset.id, "z_m");
-  return {
-    asset_id: asset.id,
-    x_km: factNum(belief, asset.id, "x_km", 0),
-    y_km: factNum(belief, asset.id, "y_km", 0),
-    depth_m: factNum(belief, asset.id, "depth_m", 0),
-    z_m: typeof zFact?.value === "number" ? zFact.value : undefined,
-    speed_kn: speedKn,
-    top_speed_kn: asset.top_speed_kn,
-  };
 }
 
 function checkHardConstraints(
@@ -157,7 +162,12 @@ function sensorSpec(s: AssetSensor): SensorSpec {
     base_quality: s.base_quality,
     max_range_km: s.max_range_km,
     k_motion: s.k_motion,
+    beam_half_angle_deg: s.beam_half_angle_deg,
   };
+}
+
+function positionOverrideForAsset(input: EngineInput, assetId: string): Position3 | undefined {
+  return input.planningOverrides?.get(assetId);
 }
 
 /** Point-task leaf — sensor-axis satisfaction at a fixed target (today's logic). */
@@ -183,7 +193,12 @@ function computePointTaskLeaf(
       const asset = assetMap.get(asn.asset_id);
       if (!asset) continue;
       const resolved = input.resolveOperatingPoint(asset, asn.operating_point);
-      const vehicle = vehicleFromBelief(input.belief, asset, resolved.speed_kn);
+      const vehicle = buildVehicleState(
+        input.belief,
+        asset,
+        resolved,
+        positionOverrideForAsset(input, asset.id)
+      );
       if (!checkHardConstraints(asset, task, vehicle)) continue;
       const sensor = sensorsByAsset.get(asn.asset_id)?.find((s) => s.sensor === demand.sensor);
       if (!sensor) continue;
@@ -217,9 +232,41 @@ function computePointTaskLeaf(
   };
 }
 
-/** Guard stub — constant area leaf for B1; replaced by coverageVolume in Phase C. */
-function computeAreaTaskLeafStub(): { cov_t: number; freshnessValues: number[]; infeasible: boolean } {
-  return { cov_t: 0.7, freshnessValues: [1], infeasible: false };
+function computeAreaTaskLeaf(
+  task: TaskDef,
+  assignments: Assignment[],
+  input: EngineInput
+): {
+  cov_t: number;
+  freshnessValues: number[];
+  infeasible: boolean;
+  volumeVisits?: VolumeVisitRecord[];
+} {
+  if (!task.area) {
+    return { cov_t: 0, freshnessValues: [], infeasible: true };
+  }
+  const priorVisits = input.volumeVisits?.get(task.id) ?? [];
+  const result = coverageVolume({
+    task,
+    params: task.area,
+    visits: priorVisits,
+    assignments,
+    belief: input.belief,
+    assets: input.assets,
+    sensors: input.sensors,
+    demands: task.demands,
+    now: input.now,
+    p: input.config.p,
+    environmentContext: input.environmentContext,
+    resolveOperatingPoint: input.resolveOperatingPoint,
+    planningOverrides: input.planningOverrides,
+  });
+  return {
+    cov_t: result.cov_t,
+    freshnessValues: result.freshnessValues,
+    infeasible: result.infeasible,
+    volumeVisits: result.volumeVisits,
+  };
 }
 
 /** Dispatch task coverage by leaf kind — rollup stays leaf-agnostic (B1 / T3.1). */
@@ -227,13 +274,18 @@ export function computeTaskLeaf(
   task: TaskDef,
   assignments: Assignment[],
   input: EngineInput
-): { cov_t: number; freshnessValues: number[]; infeasible: boolean } {
+): {
+  cov_t: number;
+  freshnessValues: number[];
+  infeasible: boolean;
+  volumeVisits?: VolumeVisitRecord[];
+} {
   const kind = task.kind ?? "POINT";
   switch (kind) {
     case "POINT":
       return computePointTaskLeaf(task, assignments, input);
     case "AREA":
-      return computeAreaTaskLeafStub();
+      return computeAreaTaskLeaf(task, assignments, input);
     default:
       return { cov_t: 0, freshnessValues: [], infeasible: true };
   }
@@ -251,12 +303,20 @@ export function computeTaskCoverage(
 export function computeMissionCoverage(
   mission: MissionDef,
   assignments: Assignment[],
-  input: EngineInput
+  input: EngineInput,
+  volumeVisitsAcc?: Map<string, VolumeVisitRecord[]>
 ): { cov_m: number; confidence: number } {
   const weighted: { w_t: number; cov_t: number }[] = [];
   const allFresh: number[] = [];
   for (const task of mission.tasks) {
-    const { cov_t, freshnessValues, infeasible } = computeTaskLeaf(task, assignments, input);
+    const { cov_t, freshnessValues, infeasible, volumeVisits } = computeTaskLeaf(
+      task,
+      assignments,
+      input
+    );
+    if (volumeVisits && volumeVisitsAcc) {
+      volumeVisitsAcc.set(task.id, volumeVisits);
+    }
     weighted.push({ w_t: task.w_t, cov_t: infeasible ? 0 : cov_t });
     allFresh.push(...freshnessValues);
   }
@@ -264,6 +324,44 @@ export function computeMissionCoverage(
     cov_m: coverageMission(weighted),
     confidence: confidenceMission(allFresh.length ? allFresh : [1]),
   };
+}
+
+/** Recompute mission states and updated volume visit memory (C1). */
+export function recomputeMissionStatesWithVisits(
+  input: EngineInput,
+  tick: number
+): { states: MissionStateRow[]; volumeVisits: Map<string, VolumeVisitRecord[]> } {
+  const volumeVisits = new Map(input.volumeVisits ?? []);
+  const states = input.missions.map((mission) => {
+    const { cov_m, confidence } = computeMissionCoverage(
+      mission,
+      input.assignments,
+      input,
+      volumeVisits
+    );
+    const cov_baseline = input.covBaselines.get(mission.id) ?? cov_m;
+    const time_to_act_s = timeToAct(mission, input);
+    const impact = mission.priority * (cov_baseline - cov_m);
+    const urgency = clamp(1 - time_to_act_s / input.config.T_ref, 0, 1);
+    const salience = impact * urgency * confidence;
+    return {
+      mission_id: mission.id,
+      tick,
+      cov_baseline,
+      cov_now: cov_m,
+      tier: tier(cov_m, {
+        full: input.config.tier_full,
+        degraded: input.config.tier_degraded,
+        at_risk: input.config.tier_at_risk,
+      }),
+      confidence,
+      time_to_act_s,
+      impact,
+      urgency,
+      salience,
+    };
+  });
+  return { states, volumeVisits };
 }
 
 function timeToAct(mission: MissionDef, input: EngineInput): number {
@@ -289,30 +387,7 @@ function clamp(v: number, lo: number, hi: number): number {
 
 /** Full MissionState recompute — THE one derived pass (P3). */
 export function recomputeMissionStates(input: EngineInput, tick: number): MissionStateRow[] {
-  return input.missions.map((mission) => {
-    const { cov_m, confidence } = computeMissionCoverage(mission, input.assignments, input);
-    const cov_baseline = input.covBaselines.get(mission.id) ?? cov_m;
-    const time_to_act_s = timeToAct(mission, input);
-    const impact = mission.priority * (cov_baseline - cov_m);
-    const urgency = clamp(1 - time_to_act_s / input.config.T_ref, 0, 1);
-    const salience = impact * urgency * confidence;
-    return {
-      mission_id: mission.id,
-      tick,
-      cov_baseline,
-      cov_now: cov_m,
-      tier: tier(cov_m, {
-        full: input.config.tier_full,
-        degraded: input.config.tier_degraded,
-        at_risk: input.config.tier_at_risk,
-      }),
-      confidence,
-      time_to_act_s,
-      impact,
-      urgency,
-      salience,
-    };
-  });
+  return recomputeMissionStatesWithVisits(input, tick).states;
 }
 
 /** Default operating-point resolver — extended in S10; bearing via JSON handle in A0.8. */

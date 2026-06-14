@@ -1,5 +1,5 @@
 import {
-  recomputeMissionStates,
+  recomputeMissionStatesWithVisits,
   scanBelief,
   attachMissionToDisruptions,
   shouldAlert,
@@ -19,11 +19,12 @@ import {
   insertReports,
   buildEngineInputFromDb,
   loadAssignments,
+  upsertVolumeVisits,
 } from "@mission-orchestrator/db";
 
 export interface TickResult {
   tick: number;
-  missionStates: ReturnType<typeof recomputeMissionStates>;
+  missionStates: ReturnType<typeof recomputeMissionStatesWithVisits>["states"];
   alerts: { shown: boolean; summary: string; mission_id: string; salience: number }[];
   topPlan: string | null;
 }
@@ -43,7 +44,7 @@ export async function runTick(tick: number, simReports?: ReturnType<Simulator["t
   }
 
   const input = await buildEngineInputFromDb(client, now);
-  const states = recomputeMissionStates(input, tick);
+  const { states, volumeVisits } = recomputeMissionStatesWithVisits(input, tick);
 
   for (const s of states) {
     await client.from("mission_state").upsert({
@@ -59,6 +60,8 @@ export async function runTick(tick: number, simReports?: ReturnType<Simulator["t
       salience: s.salience,
     });
   }
+
+  await upsertVolumeVisits(client, volumeVisits);
 
   const assignments = await loadAssignments(client);
   const assetMission = new Map<string, string>();

@@ -12,17 +12,22 @@ on conflict (asset_id, sensor) do nothing;
 
 insert into public.missions (id, name, type, priority, human_desc) values
   ('mission-track', 'Submarine Track', 'track', 0.9, 'High-priority acoustic track'),
-  ('mission-patrol', 'Surface Patrol', 'patrol', 0.4, 'Secondary surface patrol')
+  ('mission-patrol', 'Surface Patrol', 'patrol', 0.4, 'Secondary surface patrol'),
+  ('mission-volume', 'Subsurface Box Patrol', 'patrol', 0.5, '3D AABB volume patrol demo (C1)')
 on conflict (id) do nothing;
 
-insert into public.tasks (id, mission_id, w_t, target_x, target_y, target_depth_m, window_end_s) values
-  ('task-track', 'mission-track', 1.0, 2, 0, 50, 3600),
-  ('task-patrol', 'mission-patrol', 1.0, 5, 2, 0, null)
+insert into public.tasks (id, mission_id, w_t, target_x, target_y, target_depth_m, window_end_s, kind, footprint, z_min_m, z_max_m, revisit_interval_s, cell_size_m) values
+  ('task-track', 'mission-track', 1.0, 2, 0, 50, 3600, 'POINT', null, null, null, null, null),
+  ('task-patrol', 'mission-patrol', 1.0, 5, 2, 0, null, 'POINT', null, null, null, null, null),
+  ('task-volume', 'mission-volume', 1.0, 2, 0, 60, null, 'AREA',
+    '{"kind":"aabb","center_x_km":2.0,"center_y_km":0.0,"half_width_km":1.0,"half_height_km":1.0}',
+    -80, -40, 600, 500)
 on conflict (id) do nothing;
 
 insert into public.task_demands (task_id, sensor, min_quality) values
   ('task-track', 'passive_acoustic', 0.5),
-  ('task-patrol', 'eo_ir', 0.4)
+  ('task-patrol', 'eo_ir', 0.4),
+  ('task-volume', 'passive_acoustic', 0.5)
 on conflict (task_id, sensor) do nothing;
 
 insert into public.task_constraints (task_id, kind, param) values
