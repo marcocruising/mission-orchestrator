@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { DB_PACKAGE } from "./index.js";
 
-describe("db scaffold", () => {
-  it("exports package id", () => {
-    expect(DB_PACKAGE).toBe("@mission-orchestrator/db");
+describe("db package", () => {
+  it("exports client helpers", async () => {
+    const mod = await import("./index.js");
+    expect(mod.createServiceClient).toBeDefined();
+    expect(mod.loadBelief).toBeDefined();
   });
 });

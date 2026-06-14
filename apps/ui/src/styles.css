@@ -1,0 +1,94 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+header {
+  grid-column: 1 / -1;
+}
+
+.banner {
+  background: #422006;
+  color: #fdba74;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+}
+
+.map-panel {
+  grid-column: 1 / -1;
+}
+
+.map {
+  width: 100%;
+  max-width: 600px;
+  height: 400px;
+  background: #1e293b;
+  border-radius: 8px;
+}
+
+.tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tile {
+  border: 2px solid;
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #1e293b;
+}
+
+.tier {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.plans {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.plan-card {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.plan-card button {
+  margin-top: 0.5rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.4rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.muted {
+  opacity: 0.6;
+}
+
+.cascade,
+.assumptions {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}
