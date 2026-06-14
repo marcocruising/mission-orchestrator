@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "../../../scripts/load-env.mjs";
 import {
   Simulator,
   ingestReports,
