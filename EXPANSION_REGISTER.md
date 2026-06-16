@@ -1,9 +1,9 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2** complete · **D3 next**
+**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2** · **D3** complete · **D4 next**
 
 > **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* · canonical plan below · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) · design mock: [`example_operator_console_design.html`](example_operator_console_design.html).
-> Health: `pnpm db:verify` (**15/15** tables) · `pnpm verify` (~**213** tests · 1 Kalman `test.todo`).
+> Health: `pnpm db:verify` (**17/17** tables) · `pnpm verify` (~**213** tests · 1 Kalman `test.todo`).
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -33,7 +33,7 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A0.1** | `reconcile.ts` | ✅ Done | Ingest routes all merges through `reconcile()`; v1 = newer ts wins, confidence passthrough |
 | **A0.2** | `envMult.ts` | ✅ Done | Product over `EnvFactor[]`; `DEFAULT_ENV_FACTORS = [motionEnvFactor]` |
 | **A0.3** | `coverage.ts` | ✅ Done | `coverageTask(sats, aggregator)`; default `minAxisAggregator`; stub `meanAxisAggregator` |
-| **A0.4** | `objective.ts` | ✅ Done | Sum over `ObjectiveTerm[]`; move / exposure / risk penalties as pluggable terms |
+| **A0.4** | `objective.ts` | ✅ Done | Sum over `ObjectiveTerm[]`; move / exposure / risk penalties as pluggable terms — **D3 bodies live** |
 | **A0.5** | `planner.ts` | ✅ Done | `Planner.replan()` interface; `defaultPlanner` + `stubPlanner`; conformance test |
 | **A0.6** | `summarize.ts` | ✅ Done | `summarize(state, summarizer?)`; v1 = `templateSummarizer`; tick writes `summary_text` |
 | **A0.7** | `commsModel.ts` | ✅ Done | Graph model + per-link gate; `staticCommsModel` fallback when no links |
@@ -142,6 +142,21 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 
 **Commit boundary:** `D2: comms pathDelay in ingest`.
 
+### Progress log (Phase D3 — threats & exposure / risk) ✅
+
+| Step | Module | Status | Notes |
+|------|--------|--------|-------|
+| **D3 engine** | `routePlanner.ts` | ✅ Done | `ThreatZone`, `NoGoZone`, `buildRoutePlanner`, `checkNoGoGate` |
+| **D3 measure** | `RoutePlanner.measure()` | ✅ Done | exposure = max proximity; risk = max intensity × proximity along belief→task segments |
+| **D3 planner** | `planner.ts` | ✅ Done | Live exposure/risk in `computeObjective`; `plan_eval.total_exposure` populated |
+| **D3 commit** | `applyPlan.ts` | ✅ Done | No-go gate at commit time |
+| **D3 DDL** | `d3_threats` | ✅ Done | `threats`, `no_go_zones` — **17/17** tables |
+| **D3 DB** | `packages/db/threats.ts` | ✅ Done | `loadRoutePlanner` → `buildEngineInputFromDb` |
+| **D3 seed** | `seed.sql`, `offshore-pipeline.ts` | ✅ Done | Hostile surface threat + fisher exclusion no-go |
+| **D3 tests** | `routePlanner.test.ts` | ✅ Done | Geometry, monotonicity, no-go gate, planner pruning |
+
+**Commit boundary:** `D3: threats and route exposure/risk`.
+
 ### Progress log (Phase B — guard tests)
 
 | Step | Module / test | Status | Notes |
@@ -214,7 +229,8 @@ Phase C — Tier 3 bodies (volume patrol, patrol sweep, directional sensors)  �
 UI-1    — Operator console frontend (design mock → live React app)  ✅ COMPLETE
 Phase D1 — Imported env data (import + envMult + motion drift)  ✅ COMPLETE
 Phase D2 — Comms pathDelay in ingest (graph + delivery hold)     ✅ COMPLETE
-Phase D — Remaining Tier 1 bodies (D3–D6)                      ← NEXT
+Phase D3 — Threats / exposure / risk (RoutePlanner body)         ✅ COMPLETE
+Phase D — Remaining Tier 1 bodies (D4–D6)                      ← NEXT
 ```
 
 Do not start Phase C until Phase A + B are green. Imported environmental/comms data lands in Phase A
@@ -254,7 +270,7 @@ These are missing from S0–S10 but required before any Tier 1 claim is honest.
 | A0.1 | **`reconcile(existing, incoming) → Fact`** | `mergeReportIntoBelief` last-write-only | ✅ All ingest paths call `reconcile`; v1 = newer wins, confidence unchanged |
 | A0.2 | **`envMult(factors, ctx) → number`** | hardcoded `envMultMotion` | ✅ Product over `EnvFactor[]`; stub third factor (=1) is no-op |
 | A0.3 | **`coverageTask(sats, aggregator = min)`** | inline `min` in `coverageTask` | ✅ Injecting `meanAxisAggregator` changes output without touching rollup |
-| A0.4 | **`computeObjective(ctx, terms?) → number`** | inline obj in `planner.ts` | ✅ Sum over `ObjectiveTerm[]`; `lambda_exp`/`lambda_risk` wired; exposure=risk=0 today |
+| A0.4 | **`computeObjective(ctx, terms?) → number`** | inline obj in `planner.ts` | ✅ Sum over `ObjectiveTerm[]`; exposure/risk live via `routePlanner` (D3) |
 | A0.5 | **`Planner` interface + conformance test** | bare `generateCandidates` function | ✅ `Planner.replan()`; `defaultPlanner` + `stubPlanner`; conformance in `planner.conformance.test.ts` |
 | A0.6 | **`summarize(state) → string`** | `formatAlertSummary` | ✅ Single entry point; v1 = `templateSummarizer`; swappable `Summarizer` |
 | A0.7 | **`checkFleetCommsGate(assignments, commsModel, ts, budget)`** | `assignments.length <= BIG` | ✅ Gate calls `commsModel.fleetUsage(...)`; v1 static model returns 0 |
@@ -270,8 +286,8 @@ type ObjectiveTerm = (ctx: ObjectiveContext) => number;
 const DEFAULT_OBJECTIVE_TERMS: ObjectiveTerm[] = [
   coverageRewardTerm,      // + Σ W_m · cov_m
   moveCountPenaltyTerm,    // − λ_move · n_moves
-  exposurePenaltyTerm,     // − λ_exp · exposure  (0 until D3)
-  riskPenaltyTerm,         // − λ_risk · risk      (0 until D3)
+  exposurePenaltyTerm,     // − λ_exp · exposure  (D3 ✅)
+  riskPenaltyTerm,         // − λ_risk · risk      (D3 ✅)
   // future: fuelCostTerm, commsLoadTerm, operatingPointCostTerm, …
 ];
 
@@ -630,10 +646,19 @@ node apps/orchestrator/dist/cli.js env-fetch --all-ticks
 - `ingestReports` applies `pathDelay` — facts store **delivery ts**; reports held until `now`.
 - Gate binds on **per-link utilization** when graph loaded (A3).
 
-## D3 — Threats & risk (README S11, T1.1 body)
+## D3 — Threats & risk (README S11, T1.1 body) ✅ COMPLETE
 
-- `threats` / `no_go` tables.
-- `RoutePlanner` computes `exposure` / `risk`; `computeObjective` already wired in A0.4.
+| Component | Body | Status |
+|-----------|------|--------|
+| **D3 DDL** | `threats`, `no_go_zones` tables | ✅ |
+| **D3 engine** | `routePlanner.ts` — `buildRoutePlanner`, `checkNoGoGate` | ✅ |
+| **D3 measure** | Straight-line segments belief → task; graded threat discs | ✅ |
+| **D3 objective** | `exposure` / `risk` → `computeObjective` via A0.4 terms | ✅ |
+| **D3 gate** | No-go intersection prunes plan before scoring (P5) | ✅ |
+| **D3 DB** | `packages/db/threats.ts` → `EngineInput.routePlanner` | ✅ |
+| **D3 seed** | Offshore hostile contact + fisher exclusion | ✅ |
+
+**Still deferred within D3:** polygon threat/no-go geometry (body swap on same tables or jsonb footprint); multi-waypoint routes.
 
 ## D4 — Spoofing / adversarial data (README S12, T1.2 body)
 
@@ -720,7 +745,7 @@ All external data enters through **two ingestion surfaces** — never directly i
 
 | ID | Expansion | Seam installed | Body phase |
 |----|-----------|----------------|------------|
-| T1.1 | Threat routing; exposure/risk | A0.4 ✅ | D3 (S11) |
+| T1.1 | Threat routing; exposure/risk | A0.4 ✅ | **D3 ✅** |
 | T1.2 | Spoofing | A0.1 ✅ | D4 (S12) |
 | T1.3 | LLM summaries | A0.6 ✅ | D5 (S13) |
 | T1.4 | Salinity / sea-state / fog | A0.2 ✅ + A4 ✅ | **D1 ✅** |
@@ -757,7 +782,7 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 | README step | This register |
 |-------------|---------------|
-| S11 Threats & risk | D3 (requires A0.4) |
+| S11 Threats & risk | **D3 ✅** (requires A0.4) |
 | S12 Scale + spoofing | D4 (requires A0.1) + scale testing after shapes stable |
 | S13 LLM narration | D5 (requires A0.6) |
 | Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → **D1 ✅** |
@@ -771,21 +796,19 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 # Next action
 
-**Phase D3** — threats / exposure / risk (S11). D1 + D2 complete.
+**Phase D4** — spoofing / adversarial data (S12). D1 + D2 + D3 complete.
 
-The **operator console** is the demo surface — D2 UUV reports arrive ~3 ticks after send (multi-hop acoustic path); tick 4 comms loss stacks on delayed delivery.
+The **operator console** is the demo surface — D2 UUV reports arrive ~3 ticks after send (multi-hop acoustic path); tick 4 comms loss stacks on delayed delivery. D3 threat/no-go data is in seed (`threat-hostile-surface`, `ngo-fisher-exclusion`).
 
 | Priority | Phase | Why |
 |----------|-------|-----|
-| **D2** | Comms import + `ingestReports` pathDelay | Graph + gate shipped in A3; tick 4 comms demo |
-| **D3** | Threats / exposure / risk (S11) | `ObjectiveTerm[]` wired (=0 today) |
-| **D5** | LLM narration (S13) | `summarize()` seam ready |
 | **D4** | Spoofing (S12) | `reconcile()` seam ready |
+| **D5** | LLM narration (S13) | `summarize()` seam ready |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint | Body swaps on existing seams |
 
-**Still deferred:** Sentinel Hub EO proxy · C1-polygon · C1-thermocline · multi-hop patrol · per-cell `dwell_s`.
+**Still deferred:** Sentinel Hub EO proxy · C1-polygon · C1-thermocline · multi-hop patrol · per-cell `dwell_s` · polygon threats.
 
-**Health check:** `pnpm db:verify` (**15/15**) · `pnpm verify` (~**213** tests) · `node apps/orchestrator/dist/cli.js env-fetch 0` · `pnpm --filter @mission-orchestrator/ui dev` → http://localhost:5173
+**Health check:** `pnpm db:verify` (**17/17**) · `pnpm verify` (~**213** tests) · `node apps/orchestrator/dist/cli.js env-fetch 0` · `pnpm --filter @mission-orchestrator/ui dev` → http://localhost:5173
 
 **Live env tests:** `RUN_LIVE_ENV_TESTS=1 pnpm --filter @mission-orchestrator/env-import test`
 

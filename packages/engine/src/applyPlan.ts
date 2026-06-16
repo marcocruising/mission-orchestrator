@@ -10,6 +10,8 @@ import {
 import { staticCommsModel } from "./commsModel.js";
 import { staticEnvironmentContext } from "./environmentContext.js";
 import { defaultConstantVelocityModel } from "./motionModel.js";
+import { checkNoGoGate } from "./routePlanner.js";
+import { emptyRoutePlanner } from "./routePlanner.js";
 import { applyMovesToAssignments, type Plan } from "./planner.js";
 export type { Plan, PlanMove } from "./planner.js";
 
@@ -50,6 +52,17 @@ export function applyPlan(
   ) {
     return { ok: false, reason: "Pointing contention gate failed at commit time" };
   }
+  if (
+    !checkNoGoGate({
+      assignments: newAssignments,
+      missions: input.missions,
+      belief: input.belief,
+      assets: input.assets,
+      noGos: input.routePlanner.noGos,
+    })
+  ) {
+    return { ok: false, reason: "No-go zone gate failed at commit time" };
+  }
 
   const sandbox: EngineInput = { ...input, assignments: newAssignments };
   const states = recomputeMissionStates(sandbox, tick);
@@ -70,13 +83,19 @@ export function applyPlan(
 export function buildEngineInput(
   partial: Omit<
     EngineInput,
-    "resolveOperatingPoint" | "commsModel" | "environmentContext" | "motionModel" | "config"
+    | "resolveOperatingPoint"
+    | "commsModel"
+    | "environmentContext"
+    | "motionModel"
+    | "routePlanner"
+    | "config"
   > & {
     config?: Partial<EngineInput["config"]>;
     resolveOperatingPoint?: EngineInput["resolveOperatingPoint"];
     commsModel?: EngineInput["commsModel"];
     environmentContext?: EngineInput["environmentContext"];
     motionModel?: EngineInput["motionModel"];
+    routePlanner?: EngineInput["routePlanner"];
   }
 ): EngineInput {
   return {
@@ -86,5 +105,6 @@ export function buildEngineInput(
     commsModel: partial.commsModel ?? staticCommsModel,
     environmentContext: partial.environmentContext ?? staticEnvironmentContext(partial.now),
     motionModel: partial.motionModel ?? defaultConstantVelocityModel,
+    routePlanner: partial.routePlanner ?? emptyRoutePlanner,
   };
 }

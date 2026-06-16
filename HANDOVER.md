@@ -1,9 +1,9 @@
 # Mission Orchestrator — Handover
 
 **Date:** June 2026  
-**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2 (comms pathDelay in ingest)** complete · remote Supabase live (**15 tables**)
+**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2** · **D3 (threats / exposure / risk)** complete · remote Supabase live (**17 tables**)
 
-**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D (**D3 next**). Demo UI: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md). C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
+**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D (**D4 next**). Demo UI: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md). C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
 
 ---
 
@@ -11,16 +11,15 @@
 
 ### What to do next — Phase D (Tier 1 bodies)
 
-Phase **D1–D2 are complete** (env import + factors + motion drift; comms graph + ingest `pathDelay`). Next recommended work:
+Phase **D1–D3 are complete** (env import + factors + motion drift; comms graph + ingest `pathDelay`; threats + route exposure/risk). Next recommended work:
 
 | Phase | Scope | Seam already installed |
 |-------|--------|------------------------|
-| **D3** | Threats, exposure, risk (S11) | `ObjectiveTerm[]` (=0 today) |
 | **D4** | Spoofing (S12) | `reconcile()` |
 | **D5** | LLM summaries (S13) | `summarize()` |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint | Estimator, Planner, `VolumeVisitRecord`, `Footprint` |
 
-**Recommended next step:** **D3** — threat routing and exposure/risk objective terms (S11).
+**Recommended next step:** **D4** — spoofing / adversarial data via `reconcile()` body (S12).
 
 ### Do not skip
 
@@ -37,7 +36,7 @@ pnpm db:verify && pnpm verify && node apps/orchestrator/dist/cli.js inspect
 pnpm --filter @mission-orchestrator/ui dev   # → http://localhost:5173
 ```
 
-Expected: **15/15** tables · ~**213** tests (1 Kalman `test.todo`) · all lints green · operator console loads with scenario tick controls.
+Expected: **17/17** tables · ~**213** tests (1 Kalman `test.todo`) · all lints green · operator console loads with scenario tick controls.
 
 ---
 
@@ -195,13 +194,28 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
 **Sim clock:** tick index = time unit; `delay_s` in seed = one tick per hop (UUV reports arrive ~3 ticks after send).
 
+### Phase D3 — Threats & exposure / risk ✅
+
+| Step | Module | What shipped |
+|------|--------|----------------|
+| **D3 engine** | `packages/engine/src/routePlanner.ts` | `ThreatZone`, `NoGoZone`, `buildRoutePlanner`, `checkNoGoGate`; straight-line route segments belief → task |
+| **D3 measure** | `RoutePlanner.measure()` | **exposure** = max geographic proximity [0,1]; **risk** = max intensity × proximity |
+| **D3 gate** | `checkNoGoGate` | Hard prune before scoring (P5); wired in planner eval + `applyPlan` commit |
+| **D3 planner** | `planner.ts` | `computeObjective` receives live exposure/risk; `plan_eval.total_exposure` populated |
+| **D3 DDL** | `d3_threats` migration | `threats`, `no_go_zones` tables |
+| **D3 DB** | `packages/db/threats.ts` | `loadThreats`, `loadNoGoZones`, `loadRoutePlanner` → `buildEngineInputFromDb` |
+| **D3 seed** | `seed.sql`, `offshore-pipeline.ts` | Hostile surface contact (6, 10) + fisher exclusion no-go (4.5, 9.5) |
+| **D3 tests** | `routePlanner.test.ts` | Geometry, monotonicity, no-go gate, planner pruning |
+
+**Commit boundary:** `D3: threats and route exposure/risk`.
+
 ---
 
 ## Not started (ordered)
 
 | Phase | Scope |
 |-------|--------|
-| **D3–D5** | Threats (S11), spoofing (S12), LLM (S13) ← **D3 recommended next** |
+| **D4–D5** | Spoofing (S12), LLM (S13) ← **D4 recommended next** |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint, substitutable sensors |
 | **C1-future** | Polygon footprint · thermocline z band · multi-leg patrol routes (body swaps) |
 | **D1-future** | Sentinel Hub EO fog proxy · grid interpolation body (nearest-neighbor OK for v1) |
@@ -227,12 +241,14 @@ packages/engine/     Pure logic — zero DB deps, Vitest property tests
   volume/            footprint, coverageVolume, patrolSweep (C1)
   vehicleState.ts    buildVehicleState — belief + pointing + sandbox override
   pointingGate.ts    checkPointingGate (C2)
+  routePlanner.ts    buildRoutePlanner, checkNoGoGate, exposure/risk measure (D3)
   …                  reconcile, envMult, objective, planner, summarize, operatingPoint
 packages/db/         Supabase loaders
-  missions.ts        buildEngineInputFromDb (belief, missions, env, comms, volumeVisits)
+  missions.ts        buildEngineInputFromDb (belief, missions, env, comms, volumeVisits, routePlanner)
   volume.ts          load/save task_volume_visits (C1)
   environment.ts     loadEnvironmentContext, upsertEnvironmentSamples (A2 + D1)
   comms.ts           loadCommsModel (A3)
+  threats.ts         loadThreats, loadNoGoZones, loadRoutePlanner (D3)
   tracks.ts          parseTrackRow + migrateEstimate (A1)
 packages/env-import/ Open-Meteo + Copernicus fetchers, validateSamples (D1-import)
   openMeteoMarine.ts / openMeteoWeather.ts / copernicusMarine.ts / fetchEnvironment.ts
@@ -250,11 +266,11 @@ apps/ui/             Operator console (Vite + React)
   orchestrator-api-plugin.ts  Dev-only: proxy /api/* to orchestrator handlers
 example_operator_console_design.html  Design spec / binding reference (static mock)
 SCENARIO_OFFSHORE.md  Offshore demo runbook
-supabase/migrations/ S0–C2 DDL (local source of truth; apply remote via MCP)
+supabase/migrations/ S0–D3 DDL (local source of truth; apply remote via MCP)
 scripts/             lint-engine.mjs, lint-rollup-purity.mjs, lint-planner-purity.mjs, verify-supabase.mjs
   copernicus-env-subset.py   Copernicus salinity → JSON (D1-import)
   requirements-env-import.txt  Python deps for Copernicus bridge
-EXPANSION_REGISTER.md  Canonical plan — **D3 next**
+EXPANSION_REGISTER.md  Canonical plan — **D4 next**
 C1_VOLUME_PATROL.md    C1 archive (complete — reference for volume patrol)
 A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 ```
@@ -270,14 +286,14 @@ A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 | **Supabase MCP** | DDL — `apply_migration`, `list_tables`, `list_migrations` |
 | **`.env` REST keys** | Runtime — orchestrator, UI, `pnpm db:verify`, integration tests |
 
-**MCP migrations applied:** `s0_config` … `a3_comms_graph`, `c1_volume_patrol`, `c2_directional_sensors`
+**MCP migrations applied:** `s0_config` … `a3_comms_graph`, `c1_volume_patrol`, `c2_directional_sensors`, `d3_threats`
 
-- **15/15** tables reachable via REST
+- **17/17** tables reachable via REST
 - RLS enabled; anon read; service role writes
 - Demo seed: **offshore pipeline scenario** — 4 assets, 2 missions, pipeline AREA patrol ([SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md))
 
 ```bash
-pnpm db:verify    # REST — expect 15/15 tables
+pnpm db:verify    # REST — expect 17/17 tables
 pnpm verify       # lint + build + ~213 tests
 ```
 
@@ -342,15 +358,17 @@ environment_samples ──→ loadEnvironmentContext() ──→ EnvironmentCont
 Simulator → reports → ingestReports → reconcile() → belief_facts
 comms_links ──→ loadCommsModel() ──→ CommsModel (route, linkUtilization, pathDelay)
 task_volume_visits ──→ loadVolumeVisits() ──→ EngineInput.volumeVisits
+threats / no_go_zones ──→ loadRoutePlanner() ──→ EngineInput.routePlanner
                                                               ↓
-assignments + missionDefs + belief + commsModel + motionModel + environmentContext
+assignments + missionDefs + belief + commsModel + motionModel + environmentContext + routePlanner
                               ↓
                     computeTaskLeaf → recomputeMissionStatesWithVisits (PURE)
                               ↓
               Monitor → summarize() → salience gate → Planner.replan()
-                    (patrol: handles + planningOverrides in sandbox only)
+                    (patrol: handles + planningOverrides in sandbox only;
+                     exposure/risk via routePlanner.measure — D3)
                               ↓
-              applyPlan (gates: capacity, comms, pointing) → assignments
+              applyPlan (gates: capacity, comms, pointing, no-go) → assignments
                                                               ↓
 apps/ui/  ← Supabase Realtime + /api/tick/* + /api/apply-plan (operator console)
 ```
@@ -371,15 +389,15 @@ apps/ui/  ← Supabase Realtime + /api/tick/* + /api/apply-plan (operator consol
 
 | Check | Result |
 |-------|--------|
-| `pnpm db:verify` | 15/15 tables, anon RLS OK |
-| `pnpm verify` | ~210 passed, 1 todo (Kalman-readiness) |
+| `pnpm db:verify` | 17/17 tables, anon RLS OK |
+| `pnpm verify` | ~212 passed, 1 todo (Kalman-readiness) |
 | Live env tests | `RUN_LIVE_ENV_TESTS=1` — Open-Meteo + Copernicus + DB round-trip green |
 | D1 env-fetch | ~200 rows/tick upserted (150 Open-Meteo + 50 Copernicus) |
 | Engine purity lint | Passed |
 | Rollup leaf-agnostic lint | Passed |
 | Planner opaque-handle lint | Passed |
 | Supabase comms integration | Live tests passed |
-| C1/C2 tests | `directional.test.ts`, `patrolSweep.test.ts`, `beamGeometry.test.ts` green |
+| D3 routePlanner tests | `routePlanner.test.ts` — geometry, no-go gate, planner pruning green |
 
 **Demo note:** Default seed may keep salience below σ=0.4 — tune seed or timeline for alert→plan demo.
 
@@ -411,12 +429,14 @@ apps/ui/  ← Supabase Realtime + /api/tick/* + /api/apply-plan (operator consol
 22. **D1 factors no-op without env** — `DEFAULT_ENV_FACTORS` matches motion-only when `environmentContext` absent (B2 guard).
 23. **Copernicus salinity** — Python bridge `scripts/copernicus-env-subset.py`; TypeScript orchestrates, NetCDF parsed in Python.
 24. **Search ellipse drift (D1.2)** — lost-contact ellipse **center** shifts with current/wind via `environmentDriftMs`; uncertainty still from propagated Q.
+25. **Route exposure (D3)** — straight-line segments belief → task target; no-go is a **hard gate** (P5); threats are graded exposure/risk in objective only.
+26. **Threat discs v1** — horizontal km geometry with optional z band; polygon threats deferred to D6/C1-future body swap.
 
 ---
 
 ## Known gaps (non-blocking)
 
-1. **Phase D (remaining)** — D3–D5 threats/spoofing/LLM, D6 Kalman/MIP/scan-time
+1. **Phase D (remaining)** — D4–D5 spoofing/LLM, D6 Kalman/MIP/scan-time
 2. **D1-future** — Sentinel Hub EO proxy · grid interpolation beyond nearest-neighbor
 3. **C1-future** — polygon footprint · thermocline z band · multi-leg patrol · per-cell `dwell_s`
 4. **Alert demo tuning** — salience ≥ 0.4 with default seed (offshore tick 4 usually fires)
@@ -440,7 +460,8 @@ apps/ui/  ← Supabase Realtime + /api/tick/* + /api/apply-plan (operator consol
 | `scripts/copernicus-env-subset.py` | Copernicus salinity NetCDF → JSON |
 | `packages/engine/src/commsModel.ts` | Comms graph — `buildCommsModel`, `pathDelay` (A3 + D2) |
 | `packages/engine/src/ingest.ts` | D2 — delivery ts + hold until `now` |
-| `packages/engine/src/objective.ts` | D3 — exposure/risk terms |
+| `packages/engine/src/routePlanner.ts` | **D3** — exposure/risk measure + no-go gate |
+| `packages/db/threats.ts` | D3 — `loadRoutePlanner` |
 | `packages/engine/src/reconcile.ts` | D4 — spoofing body |
 | `packages/engine/src/summarize.ts` | D5 — LLM body |
 | `packages/engine/src/volume/footprint.ts` | D6/C1-future — polygon discretizer body swap |

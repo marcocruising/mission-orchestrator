@@ -1,6 +1,6 @@
 import type { Asset, AssetSensor, Assignment, CommsLinkRow, MissionDef } from "@mission-orchestrator/engine";
 import type { WorldTruthRow } from "@mission-orchestrator/engine";
-import { buildCommsModel, kmToM } from "@mission-orchestrator/engine";
+import { buildCommsModel, kmToM, buildRoutePlanner } from "@mission-orchestrator/engine";
 
 /** 20×20 km operating area; seafloor at depth 60 m (z = −60). */
 export const SCENARIO_META = {
@@ -55,6 +55,17 @@ export const SCENARIO_COMMS_LINKS: CommsLinkRow[] = [
 ];
 
 export const SCENARIO_COMMS_MODEL = buildCommsModel(SCENARIO_COMMS_LINKS);
+
+/** D3: hostile surface contact east of pipeline; fisher no-go blocks shortcut. */
+export const SCENARIO_THREATS = [
+  { id: "threat-hostile-surface", x_km: 6.0, y_km: 10.0, radius_km: 2.5, intensity: 0.85, z_min_m: -2, z_max_m: 50 },
+] as const;
+
+export const SCENARIO_NO_GO_ZONES = [
+  { id: "ngo-fisher-exclusion", x_km: 4.5, y_km: 9.5, radius_km: 1.2, z_min_m: -2, z_max_m: 50 },
+] as const;
+
+export const SCENARIO_ROUTE_PLANNER = buildRoutePlanner(SCENARIO_THREATS, SCENARIO_NO_GO_ZONES);
 
 export const OFFSHORE_ASSETS: Asset[] = [
   {

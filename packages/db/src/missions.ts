@@ -13,6 +13,7 @@ import { loadBelief } from "./belief.js";
 import { loadEnvironmentContext } from "./environment.js";
 import { loadCommsModel } from "./comms.js";
 import { loadVolumeVisits, parseAreaTaskParams } from "./volume.js";
+import { loadRoutePlanner } from "./threats.js";
 
 export async function loadAssets(client: SupabaseClient): Promise<Asset[]> {
   const { data, error } = await client.from("assets").select("*");
@@ -143,7 +144,7 @@ export async function buildEngineInputFromDb(
   client: SupabaseClient,
   now: number
 ): Promise<EngineInput> {
-  const [belief, assets, sensors, missions, assignments, config, covBaselines, environmentContext, commsModel, volumeVisits] =
+  const [belief, assets, sensors, missions, assignments, config, covBaselines, environmentContext, commsModel, volumeVisits, routePlanner] =
     await Promise.all([
       loadBelief(client),
       loadAssets(client),
@@ -155,6 +156,7 @@ export async function buildEngineInputFromDb(
       loadEnvironmentContext(client, now),
       loadCommsModel(client, now),
       loadVolumeVisits(client),
+      loadRoutePlanner(client),
     ]);
 
   return buildEngineInput({
@@ -169,6 +171,7 @@ export async function buildEngineInputFromDb(
     environmentContext,
     commsModel,
     volumeVisits,
+    routePlanner,
   });
 }
 

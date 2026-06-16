@@ -4,7 +4,7 @@
 **Prerequisites:** Phase A0–A4 ✅ · Phase B guards ✅ · C2 directional sensors ✅  
 **Full register:** [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § C1 · Runbook: [HANDOVER.md](HANDOVER.md)
 
-> **Agent:** This file documents the **C1 design** for reference. Phase C is complete; new work starts at **Phase D3** ([HANDOVER.md](HANDOVER.md)).
+> **Agent:** This file documents the **C1 design** for reference. Phase C is complete; new work starts at **Phase D4** ([HANDOVER.md](HANDOVER.md)).
 
 ---
 
@@ -296,4 +296,4 @@ pnpm --filter @mission-orchestrator/ui dev   # visual check — green volume cel
 
 ## Agent workflow
 
-Phase C complete. For new work see [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § Phase D (**D3 next**; D1 env + D2 comms complete).
+Phase C complete. For new work see [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § Phase D (**D4 next**; D1 env + D2 comms + D3 threats complete).

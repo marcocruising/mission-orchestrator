@@ -1,7 +1,7 @@
 # A1-revise — 3D spatial model (reference — COMPLETE)
 
 **Status:** **COMPLETE** (June 2026)  
-**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **D3 next** (A0–A4 + B + C + UI-1 + D1 + **D2** done)
+**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **D4 next** (A0–A4 + B + C + UI-1 + D1 + D2 + **D3** done)
 
 Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
 
@@ -108,8 +108,11 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 | **C1a** ✅ | **AABB volume patrol** — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
 | **C1b** ✅ | Planner patrol sweep — `patrol:` handles, `planningOverrides` |
 | **C2** ✅ | Directional sensors — `beamGainFactor`, `checkPointingGate`, `beam_half_angle_deg` |
-| **D** ← next | Imported data, threats, LLM, Kalman, scan-time bodies |
-| **D3** | Threats as 2D polygons + z bounds |
+| **D1** ✅ | Imported env data — Open-Meteo, Copernicus, motion drift |
+| **D2** ✅ | Comms pathDelay in ingest |
+| **D3** ✅ | Threats / no-go — `routePlanner.ts`, exposure/risk objective terms |
+| **D** ← next | Spoofing, LLM, Kalman, scan-time bodies |
+| **D4** | Spoofing via `reconcile()` confidence downgrade |
 | **D5** | LLM formats altitude vs depth from signed z; narrates into decision-column alert body |
 
 ---
@@ -129,4 +132,4 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 
 Same as README PRIME DIRECTIVE: tests first → minimal impl → green suite → stop → wait for confirmation.
 
-Phase A + B + C + D1 + D2 complete — proceed to **D3** per [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
+Phase A + B + C + D1 + D2 + D3 complete — proceed to **D4** per [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).

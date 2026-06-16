@@ -71,6 +71,17 @@ Multi-hop relay graph in `comms_links` (seeded with scenario). Sim clock uses **
 
 UUV link fails at **tick 2** (subsea truth); link-down report reaches the operator at **tick 4**. Restore at tick **6** → operator sees at tick **8**.
 
+## Threat picture (D3)
+
+Graded threats and hard no-go zones are seeded in `threats` / `no_go_zones` (mirrored in `SCENARIO_THREATS` / `SCENARIO_NO_GO_ZONES` in TypeScript).
+
+| ID | Kind | Center (km) | Radius | Notes |
+|----|------|-------------|--------|-------|
+| `threat-hostile-surface` | Threat (intensity 0.85) | (6, 10) | 2.5 km | Graded exposure/risk on routes passing near contact |
+| `ngo-fisher-exclusion` | No-go | (4.5, 9.5) | 1.2 km | Hard gate — plans routing through disc are pruned |
+
+The planner measures straight-line segments from each asset's belief position to its task target. Reassignments that would cross the fisher exclusion are rejected; routes near the hostile contact incur exposure/risk penalties in `plan_eval.objective`.
+
 ## Reset & load
 
 ```bash

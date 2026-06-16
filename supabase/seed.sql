@@ -106,3 +106,13 @@ insert into public.comms_links (from_id, to_id, bandwidth_bps, delay_s, ts) valu
   ('acoustic-gateway', 'operator', 50000, 1, 0),
   ('relay-buoy', 'operator', 1000000, 1, 0),
   ('sat-terminal', 'operator', 2000000, 1, 0);
+
+-- D3: offshore threat picture — hostile surface contact + fisher exclusion
+delete from public.threats;
+delete from public.no_go_zones;
+
+insert into public.threats (id, x_km, y_km, radius_km, intensity, z_min_m, z_max_m) values
+  ('threat-hostile-surface', 6.0, 10.0, 2.5, 0.85, -2, 50);
+
+insert into public.no_go_zones (id, x_km, y_km, radius_km, z_min_m, z_max_m) values
+  ('ngo-fisher-exclusion', 4.5, 9.5, 1.2, -2, 50);

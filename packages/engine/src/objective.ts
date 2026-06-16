@@ -29,12 +29,12 @@ export function moveCountPenaltyTerm(ctx: ObjectiveContext): number {
   return -ctx.config.lambda_move * ctx.nMoves;
 }
 
-/** −λ_exp · exposure — threat / no-go exposure (0 until RoutePlanner body in D3). */
+/** −λ_exp · exposure — geographic threat proximity along assignment routes (D3). */
 export function exposurePenaltyTerm(ctx: ObjectiveContext): number {
   return -ctx.config.lambda_exp * ctx.exposure;
 }
 
-/** −λ_risk · risk — route risk (0 until RoutePlanner body in D3). */
+/** −λ_risk · risk — intensity-weighted route risk (D3). */
 export function riskPenaltyTerm(ctx: ObjectiveContext): number {
   return -ctx.config.lambda_risk * ctx.risk;
 }

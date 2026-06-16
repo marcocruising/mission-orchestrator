@@ -27,5 +27,6 @@ export * from "./volume/patrolSweep.js";
 export * from "./vehicleState.js";
 export * from "./sensors/beamGeometry.js";
 export * from "./pointingGate.js";
+export * from "./routePlanner.js";
 
 export const ENGINE_VERSION = "1.0.0";

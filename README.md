@@ -3,8 +3,8 @@
 > **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
 > **Phase A0–A4** and **Phase B** complete. **Phase C complete** (C1a volume patrol, C1b planner sweep, C2 directional sensors).
 > **UI-1 complete** — operator console frontend ([`example_operator_console_design.html`](example_operator_console_design.html) → `apps/ui/`).
-> **D2 complete** — comms graph in seed, `ingestReports` pathDelay + delivery hold.
-> **Active work: Phase D3+** — threats, spoofing, LLM. Runbook: [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md).
+> **D3 complete** — `RoutePlanner` exposure/risk + no-go gate; `threats` / `no_go_zones` tables.
+> **Active work: Phase D4+** — spoofing, LLM. Runbook: [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md).
 
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
@@ -95,8 +95,7 @@ Create tables **incrementally** — each step's migration adds only what it need
   (e.g. 1 s). `now` is passed into the engine, never read inside it (P2).
 - **`time_to_act`:** `min over the affected mission's tasks of (task.window_end_s − now)`; if a task has
   no window, use the at-risk asset's **battery-time-remaining**; floor at a small ε. Drives `urgency`.
-- **`exposure`, `risk` in the objective = 0 until S11.** Threats/no-go zones don't exist before then.
-  Keep the terms in the formula (frozen shape) with value 0.
+- **`exposure`, `risk` in the objective:** computed by `RoutePlanner` per plan (D3 / S11). No-go zones are a **hard gate** before scoring; threat discs contribute graded exposure/risk penalties via `λ_exp` / `λ_risk`.
 - **`operating_point`:** an **opaque handle** resolved only by `CapacityModel`. Fixture set:
   `{STATION, SLOW, FAST}` (or a raw speed). The planner compares the **resolved capacity vectors**,
   never handle names — so different vehicle types may have different handle sets (P4/P5).
@@ -266,8 +265,8 @@ scenario timeline scrubber. Design spec: [`example_operator_console_design.html`
 when `Obj` is higher; **S3 engine math unchanged** (only the candidate set grew).
 
 ### Phase H — Stretch (only after S10 green)
-**S11 · Threats & risk** — add `threats`/`no_go`; `exposure`/`risk` terms become non-zero (routes measure
-then avoid). **S12 · Scale + spoofing** — 20 assets, salience keeps interrupts ≤ k; a conflicting report
+**S11 · Threats & risk** — ✅ **D3 complete** (`threats`/`no_go_zones`, `RoutePlanner`, exposure/risk objective terms).
+**S12 · Scale + spoofing** — 20 assets, salience keeps interrupts ≤ k; a conflicting report
 lowers a Fact's confidence rather than corrupting belief. **S13 · Real LLM narration** — swap the S6
 template for an LLM call that narrates the computed `mission_state` row (writes prose, computes nothing — P8).
 
@@ -280,7 +279,7 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 
 | Deferred | Re-enters via | When | Seam status |
 |---|---|---|---|
-| Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + `ObjectiveTerm[]` (A0.4) | S11 / D3 | ✅ terms wired (=0) |
+| Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + `ObjectiveTerm[]` (A0.4) | S11 / D3 | ✅ **body live** (D3) |
 | Spoofing / adversarial data | `reconcile()` body (A0.1) | S12 / D4 | ✅ seam installed |
 | LLM summaries | `summarize()` body (A0.6) | S13 / D5 | ✅ seam installed |
 | Salinity / sea-state / fog | `envMult` factor list (A0.2 + **A4 ✅**) | D1 | ✅ **bodies live** (import via `env-fetch`) |
@@ -306,8 +305,8 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0** for a greenfield build. **For current work**, start with **Phase D3** in
-[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (threats / exposure / risk — recommended after D1–D2).
+**Start with S0** for a greenfield build. **For current work**, start with **Phase D4** in
+[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (spoofing / adversarial data — recommended after D3).
 Demo the system: `pnpm --filter @mission-orchestrator/ui dev` → http://localhost:5173 ([SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md)).
-Verify with `pnpm db:verify` (**15/15** tables) and `pnpm verify` (~**213** tests + rollup/planner/engine lints).
+Verify with `pnpm db:verify` (**17/17** tables) and `pnpm verify` (~**213** tests + rollup/planner/engine lints).
 Refresh env data: `node apps/orchestrator/dist/cli.js env-fetch --all-ticks`.

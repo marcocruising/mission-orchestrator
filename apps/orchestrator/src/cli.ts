@@ -28,6 +28,7 @@ import {
   buildDemoTimeline,
   SCENARIO_META,
   SCENARIO_COMMS_MODEL,
+  SCENARIO_ROUTE_PLANNER,
 } from "./scenarios/offshore-pipeline.js";
 
 async function inspectLocal(tick: number): Promise<void> {
@@ -53,6 +54,8 @@ async function inspectLocal(tick: number): Promise<void> {
     assignments: DEMO_ASSIGNMENTS,
     now: tick,
     covBaselines: DEMO_COV_BASELINES,
+    commsModel: SCENARIO_COMMS_MODEL,
+    routePlanner: SCENARIO_ROUTE_PLANNER,
   });
   const states = recomputeMissionStates(input, tick);
   console.log("\n=== Mission state ===");

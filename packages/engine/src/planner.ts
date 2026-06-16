@@ -7,6 +7,7 @@ import {
 } from "./stateEngine.js";
 import { computeObjective } from "./objective.js";
 import { planningOverridesForAssignments, patrolSweepMovesForTask } from "./volume/patrolSweep.js";
+import { checkNoGoGate } from "./routePlanner.js";
 
 export type PlanMove =
   | { kind: "reassign"; asset_id: string; task_id: string; operating_point: string }
@@ -90,6 +91,19 @@ function evaluatePlan(
   }
 
   const planningOverrides = planningOverridesForAssignments(input, newAssignments);
+  if (
+    !checkNoGoGate({
+      assignments: newAssignments,
+      missions: input.missions,
+      belief: input.belief,
+      assets: input.assets,
+      planningOverrides,
+      noGos: input.routePlanner.noGos,
+    })
+  ) {
+    return null;
+  }
+
   const sandboxInput: EngineInput = {
     ...input,
     assignments: newAssignments,
@@ -107,8 +121,14 @@ function evaluatePlan(
     }
   }
 
-  const exposure = 0;
-  const risk = 0;
+  const routeMeasure = input.routePlanner.measure({
+    assignments: newAssignments,
+    missions: input.missions,
+    belief: input.belief,
+    assets: input.assets,
+    planningOverrides,
+  });
+  const { exposure, risk } = routeMeasure;
 
   const objective = computeObjective({
     missions: input.missions,
@@ -126,8 +146,12 @@ function evaluatePlan(
     total_exposure: exposure,
     cascades,
     assumptions: planningOverrides
-      ? ["exposure=0", "risk=0", "belief frozen; patrol sandbox uses hypothetical cell positions"]
-      : ["exposure=0", "risk=0", "belief frozen at eval time"],
+      ? [
+          `exposure=${exposure.toFixed(3)}`,
+          `risk=${risk.toFixed(3)}`,
+          "belief frozen; patrol sandbox uses hypothetical cell positions",
+        ]
+      : [`exposure=${exposure.toFixed(3)}`, `risk=${risk.toFixed(3)}`, "belief frozen at eval time"],
     n_moves: plan.moves.length,
   };
 }

@@ -24,6 +24,7 @@ import {
 import type { Position3 } from "./spatial.js";
 import { buildVehicleState } from "./vehicleState.js";
 import { checkPointingGate } from "./pointingGate.js";
+import type { RoutePlanner } from "./routePlanner.js";
 
 export { checkPointingGate };
 
@@ -135,6 +136,8 @@ export interface EngineInput {
   volumeVisits?: Map<string, VolumeVisitRecord[]>;
   /** Sandbox-only hypothetical positions for patrol sweep eval (C1b) — never set on live tick. */
   planningOverrides?: Map<string, Position3>;
+  /** Route exposure/risk measurement for plan objective (D3 / S11). */
+  routePlanner: RoutePlanner;
 }
 
 function factNum(belief: Belief, assetId: string, field: string, fallback: number): number {

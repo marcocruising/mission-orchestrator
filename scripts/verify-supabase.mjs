@@ -32,6 +32,8 @@ const tables = [
   "comms_nodes",
   "comms_links",
   "task_volume_visits",
+  "threats",
+  "no_go_zones",
 ];
 
 let ok = 0;
