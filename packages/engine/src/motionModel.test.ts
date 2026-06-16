@@ -3,10 +3,12 @@ import {
   ConstantVelocityModel,
   cvTransitionMatrix,
   defaultConstantVelocityModel,
+  environmentDriftMs,
   initialLostContactState,
   propagateState,
   traceProcessNoise,
 } from "./motionModel.js";
+import { staticEnvironmentContext } from "./environmentContext.js";
 import { covToEllipse } from "./estimate.js";
 import { StateLayout } from "./spatial.js";
 import { ownAssetSearchUncertainty } from "./searchRegion.js";
@@ -65,5 +67,32 @@ describe("MotionModel (T2.5)", () => {
     expect(F[StateLayout.X][StateLayout.VX]).toBe(3);
     expect(F[StateLayout.Y][StateLayout.VY]).toBe(3);
     expect(F[StateLayout.Z][StateLayout.VZ]).toBe(3);
+  });
+
+  it("applies ocean current drift to predicted mean position (D1.2)", () => {
+    const env = staticEnvironmentContext(0, { current_u_ms: 1, current_v_ms: 0.5 });
+    const state = [0, 0, -50, 0, 0, 0];
+    const { mean } = defaultConstantVelocityModel.predict(state, 100, env);
+    expect(mean[StateLayout.X]).toBeCloseTo(100, 3);
+    expect(mean[StateLayout.Y]).toBeCloseTo(50, 3);
+  });
+
+  it("environmentDriftMs adds surface windage when z at surface", () => {
+    const env = staticEnvironmentContext(0, {
+      current_u_ms: 0,
+      current_v_ms: 0,
+      wind_ms: 10,
+      wind_direction_deg: 0,
+    });
+    const drift = environmentDriftMs(env, { x_m: 0, y_m: 0, z_m: 0 });
+    expect(drift.v_ms).toBeLessThan(0);
+    expect(Math.abs(drift.v_ms)).toBeGreaterThan(0);
+  });
+
+  it("search ellipse center shifts with environmental drift when contact lost", () => {
+    const env = staticEnvironmentContext(0, { current_u_ms: 0.5, current_v_ms: 0 });
+    const noEnv = ownAssetSearchUncertainty(10, 10, -60, 6, 3600, 0);
+    const withEnv = ownAssetSearchUncertainty(10, 10, -60, 6, 3600, 0, 2, 0.4, defaultConstantVelocityModel, env);
+    expect(withEnv.region.center.x_km).toBeGreaterThan(noEnv.region.center.x_km);
   });
 });

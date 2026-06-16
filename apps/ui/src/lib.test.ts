@@ -12,7 +12,7 @@ describe("lib", () => {
 
   it("tierColor maps mission tiers", async () => {
     const { tierColor } = await import("./lib.js");
-    expect(tierColor("FULL")).toBe("#22c55e");
-    expect(tierColor("LOST")).toBe("#ef4444");
+    expect(tierColor("FULL")).toBe("#34b58a");
+    expect(tierColor("LOST")).toBe("#d2495f");
   });
 });

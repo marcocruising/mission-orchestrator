@@ -10,11 +10,13 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "inspect": "node dist/cli.js inspect",
-    "sim": "node dist/cli.js sim"
+    "sim": "node dist/cli.js sim",
+    "dev-api": "node dist/dev-api.js"
   },
   "dependencies": {
     "@mission-orchestrator/db": "workspace:*",
-    "@mission-orchestrator/engine": "workspace:*"
+    "@mission-orchestrator/engine": "workspace:*",
+    "@mission-orchestrator/env-import": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

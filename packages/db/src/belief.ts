@@ -36,6 +36,24 @@ export async function upsertBeliefFacts(client: SupabaseClient, belief: Belief):
   if (error) throw error;
 }
 
+export async function loadReportsUpTo(
+  client: SupabaseClient,
+  maxSentTs: number
+): Promise<{ ts: number; asset_id: string; field: string; value: unknown }[]> {
+  const { data, error } = await client
+    .from("reports")
+    .select("ts, asset_id, field, value")
+    .lte("ts", maxSentTs)
+    .order("ts", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    ts: Number(row.ts),
+    asset_id: row.asset_id,
+    field: row.field,
+    value: row.value,
+  }));
+}
+
 export async function insertReports(
   client: SupabaseClient,
   reports: { ts: number; asset_id: string; field: string; value: unknown }[]
@@ -52,6 +70,10 @@ export async function insertWorldTruth(
   rows: object[]
 ): Promise<void> {
   if (rows.length === 0) return;
-  const { error } = await client.from("world_truth").insert(rows);
+  const dbRows = rows.map((row) => {
+    const { z_m: _z, ...rest } = row as Record<string, unknown>;
+    return rest;
+  });
+  const { error } = await client.from("world_truth").insert(dbRows);
   if (error) throw error;
 }

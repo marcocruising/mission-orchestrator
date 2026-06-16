@@ -1,9 +1,9 @@
 # Mission Orchestrator — Handover
 
 **Date:** June 2026  
-**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** complete · remote Supabase live (**15 tables**)
+**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2 (comms pathDelay in ingest)** complete · remote Supabase live (**15 tables**)
 
-**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D. C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
+**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D (**D3 next**). Demo UI: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md). C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
 
 ---
 
@@ -11,18 +11,16 @@
 
 ### What to do next — Phase D (Tier 1 bodies)
 
-Phase **C is complete** (volume patrol, planner sweep, directional sensors). Next work is **body swaps** behind frozen interfaces — any order; see register for suggested priority.
+Phase **D1–D2 are complete** (env import + factors + motion drift; comms graph + ingest `pathDelay`). Next recommended work:
 
 | Phase | Scope | Seam already installed |
 |-------|--------|------------------------|
-| **D1** | Real salinity / sea-state / fog / current bodies | `EnvironmentContext`, `envMult` factors, `MotionModel` |
-| **D2** | Comms import + ingest `pathDelay` | `CommsModel` graph, per-link gate |
 | **D3** | Threats, exposure, risk (S11) | `ObjectiveTerm[]` (=0 today) |
 | **D4** | Spoofing (S12) | `reconcile()` |
 | **D5** | LLM summaries (S13) | `summarize()` |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint | Estimator, Planner, `VolumeVisitRecord`, `Footprint` |
 
-**Recommended first step:** **D1** — wire `environment_samples` import so stub factors return real values.
+**Recommended next step:** **D3** — threat routing and exposure/risk objective terms (S11).
 
 ### Do not skip
 
@@ -36,9 +34,10 @@ Phase **C is complete** (volume patrol, planner sweep, directional sensors). Nex
 
 ```bash
 pnpm db:verify && pnpm verify && node apps/orchestrator/dist/cli.js inspect
+pnpm --filter @mission-orchestrator/ui dev   # → http://localhost:5173
 ```
 
-Expected: **15/15** tables · ~**200** tests (1 Kalman `test.todo`) · all lints green.
+Expected: **15/15** tables · ~**213** tests (1 Kalman `test.todo`) · all lints green · operator console loads with scenario tick controls.
 
 ---
 
@@ -69,7 +68,7 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 | **S6** | `Monitor.scan`, salience gate, alert summaries | Done |
 | **S7** | Planner: sandbox re-eval, do-nothing baseline, `Obj` ranking | Done |
 | **S8** | `applyPlan` re-validation, `decision_log`, tick loop CLI | Done |
-| **S9** | React UI: map, search ellipses, mission tiles, recommendation panel | Done |
+| **S9** | Operator console UI (Realtime + scenario API) | Done — superseded by **UI-1** |
 | **S10** | Operating-point candidates (`STATION`/`SLOW`/`FAST`) | Done |
 
 ### Phase A0 — Seam retrofits
@@ -96,7 +95,7 @@ Single-operator decision support for a fleet of unmanned naval vehicles. When a 
 | `coverage.ts` | `slantRangeKm` via spatial seam |
 | `searchRegion.ts` | `ownAssetSearchUncertainty` — MotionModel-propagated 6D reachable set |
 | `track.ts` / `tracks` | External contact tracks; `migrateEstimate` on DB load |
-| UI | Map ellipse + z σ label on comms loss |
+| UI | Map ellipse + z σ label on comms loss → **UI-1** dual tactical view |
 
 Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
@@ -125,10 +124,11 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
 | Module | What shipped |
 |--------|----------------|
-| `envFactors/salinityFactor.ts` | Stub → 1.0; samples `salinity_psu` |
-| `envFactors/seaStateFactor.ts` | Stub → 1.0; samples `sea_state_hs_m` |
-| `envFactors/fogFactor.ts` | Stub → 1.0; samples `fog_vis_km` |
-| `DEFAULT_ENV_FACTORS` | `[motion, salinity, seaState, fog, beamGain]` — env stubs until D1; beamGain no-op when omnidirectional |
+| `envFactors/salinityFactor.ts` | Real PSU curve — `passive_acoustic` only (D1) |
+| `envFactors/seaStateFactor.ts` | Hs degradation — surface `eo_ir` / `passive_acoustic` (D1) |
+| `envFactors/fogFactor.ts` | Visibility degradation — `eo_ir` only (D1) |
+| `envFactors/curves.ts` | Shared graded multipliers (D1) |
+| `DEFAULT_ENV_FACTORS` | `[motion, salinity, seaState, fog, beamGain]` — D1 bodies live when env loaded |
 
 ### Phase B — Guard tests
 
@@ -150,17 +150,61 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 
 **Tests added:** `footprint.test.ts`, `coverageVolume.test.ts`, `patrolSweep.test.ts`, `beamGeometry.test.ts`, `directional.test.ts`.
 
+### UI-1 — Operator console frontend
+
+| Item | What shipped |
+|------|----------------|
+| **Design source** | [`example_operator_console_design.html`](example_operator_console_design.html) — static mock → React |
+| **Layout** | Header (mission pills) · fleet rail · dual stage (plan view + water-column profile) · decision column · timeline |
+| **Plan view** | `PlanView.tsx` — pipeline corridor, volume visit cells, rig, domain chevrons, pulsing search ellipses |
+| **Profile view** | `ProfileView.tsx` — signed z-up water column, surface/seabed strata, asset depths |
+| **Decision column** | Alerts (`alert_log`), ranked plans (`plan_eval` + `candidate_plans`), Accept → `applyPlan` |
+| **Asset drawer** | Sensor base vs effective bars (`effectiveQuality`), assignment + operating point readout |
+| **Scenario controls** | Timeline scrubber — `/api/tick/next`, `/api/tick/goto`, `/api/reset` via Vite plugin |
+| **Data** | Supabase Realtime on `belief_facts`, `mission_state`, `plan_eval`, `alert_log`, `task_volume_visits`, `environment_samples` |
+| **Env in UI** | Asset drawer effective bars + drift-aware search ellipses when `environment_samples` loaded (D1) |
+| **Demo scenario** | Offshore pipeline & rig — [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) |
+
+### Phase D1 — Imported environmental data ✅
+
+| Step | Module | What shipped |
+|------|--------|----------------|
+| **D1-import** | `packages/env-import/` | Open-Meteo Marine + Weather, Copernicus salinity (Python bridge) → `environment_samples` |
+| **D1-import CLI** | `env-fetch` | `orchestrator env-fetch [tick] \| --all-ticks` · `--skip-copernicus` |
+| **D1-import wire** | `scenario-run.ts` | `replayToTick` auto-runs `env-fetch --all-ticks` after reset |
+| **D1 geo** | `offshore-pipeline.ts` | North Sea anchor 56.5°N, 1.0°E · 5×5 grid · depths 0 m + 60 m |
+| **D1 factors** | `envFactors/curves.ts`, `salinityFactor`, `seaStateFactor`, `fogFactor` | Graded multipliers; no-op without `EnvironmentContext` (B2 guard preserved) |
+| **D1.2 motion** | `motionModel.ts` | `environmentDriftMs` — current u/v + surface/air windage; search ellipse center shifts |
+| **D1 FieldKind** | `environmentContext.ts` | + `wind_direction_deg` (additive) |
+| **D1 validation** | `validateSamples.ts` | Physical range checks before upsert; live tests with `RUN_LIVE_ENV_TESTS=1` |
+| **D1 DB** | `packages/db/environment.ts` | `upsertEnvironmentSamples()` |
+
+**External APIs:** Open-Meteo (no key) · Copernicus Marine (`COPERNICUSMARINE_*` + `scripts/copernicus-env-subset.py`) · Sentinel Hub credentials in `.env.example` (not wired yet).
+
+**Typical fetch:** ~200 rows/tick (150 Open-Meteo + 50 Copernicus salinity at surface + seafloor).
+
+### Phase D2 — Comms pathDelay in ingest ✅
+
+| Step | Module | What shipped |
+|------|--------|----------------|
+| **D2 ingest** | `packages/engine/src/ingest.ts` | `ingestReports(..., { commsModel, now })` — delivery ts via `messageDeliveryTs`; holds reports until `now` |
+| **D2 wire** | `apps/orchestrator/src/tick.ts` | Rebuilds belief from all reports ≤ tick with DB-loaded `CommsModel` |
+| **D2 wire** | `apps/orchestrator/src/cli.ts` | `sim` + local `inspect` use comms graph |
+| **D2 topology** | `offshore-pipeline.ts`, `seed.sql` | Relay buoy + acoustic gateway + sat terminal; UUV 3-hop, USV/UAV 2-hop |
+| **D2 DB** | `packages/db/belief.ts` | `loadReportsUpTo()` for cumulative delayed delivery |
+
+**Sim clock:** tick index = time unit; `delay_s` in seed = one tick per hop (UUV reports arrive ~3 ticks after send).
+
 ---
 
 ## Not started (ordered)
 
 | Phase | Scope |
 |-------|--------|
-| **D1** | Imported environmental data bodies ← **recommended next** |
-| **D2** | Comms import + ingest delay |
-| **D3–D5** | Threats (S11), spoofing (S12), LLM (S13) |
+| **D3–D5** | Threats (S11), spoofing (S12), LLM (S13) ← **D3 recommended next** |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint, substitutable sensors |
 | **C1-future** | Polygon footprint · thermocline z band · multi-leg patrol routes (body swaps) |
+| **D1-future** | Sentinel Hub EO fog proxy · grid interpolation body (nearest-neighbor OK for v1) |
 
 ---
 
@@ -170,15 +214,15 @@ Spec archive: [A1_REVISE_3D.md](A1_REVISE_3D.md) (complete).
 packages/engine/     Pure logic — zero DB deps, Vitest property tests
   spatial.ts         Position3, z-up, slant range (A1)
   estimate.ts        cv6 Estimate, migrateEstimate (A1)
-  motionModel.ts     ConstantVelocityModel, propagateState (A2)
-  environmentContext.ts  FieldKind, sample(), static/grid bodies (A2)
+  motionModel.ts     ConstantVelocityModel + environmentDriftMs (D1.2)
+  environmentContext.ts  FieldKind (+ wind_direction_deg), sample(), buildEnvironmentContext (A2)
   commsModel.ts      buildCommsModel, route, linkUtilization (A3)
-  envFactors/        salinity, seaState, fog, beamGain (A4 + C2)
+  envFactors/        curves, salinity, seaState, fog, beamGain (D1 bodies + C2)
   sensors/           beamGeometry.ts (C2)
   guard.test.ts      B1/B2/B3 guard tests
   directional.test.ts  C1b + C2 integration tests
   coverage.ts        slantRangeKm, effectiveQuality + env ctx (A1/A2/A4/C2)
-  searchRegion.ts    ownAssetSearchUncertainty via MotionModel (A1/A2)
+  searchRegion.ts    ownAssetSearchUncertainty — MotionModel + optional EnvironmentContext (D1.2)
   stateEngine.ts     computeTaskLeaf; volumeVisits; planningOverrides (C1)
   volume/            footprint, coverageVolume, patrolSweep (C1)
   vehicleState.ts    buildVehicleState — belief + pointing + sandbox override
@@ -187,14 +231,30 @@ packages/engine/     Pure logic — zero DB deps, Vitest property tests
 packages/db/         Supabase loaders
   missions.ts        buildEngineInputFromDb (belief, missions, env, comms, volumeVisits)
   volume.ts          load/save task_volume_visits (C1)
-  environment.ts     loadEnvironmentContext (A2)
+  environment.ts     loadEnvironmentContext, upsertEnvironmentSamples (A2 + D1)
   comms.ts           loadCommsModel (A3)
   tracks.ts          parseTrackRow + migrateEstimate (A1)
-apps/orchestrator/   CLI: inspect | sim | tick | apply (tick persists volume visits)
-apps/ui/             Vite + React Realtime dashboard
+packages/env-import/ Open-Meteo + Copernicus fetchers, validateSamples (D1-import)
+  openMeteoMarine.ts / openMeteoWeather.ts / copernicusMarine.ts / fetchEnvironment.ts
+apps/orchestrator/   CLI + scenario API: inspect | sim | tick | apply | scenario | env-fetch
+  env-fetch.ts       runEnvFetch → upsert environment_samples
+  api-handlers.ts    HTTP handlers (tick, reset, apply-plan)
+  scenario-run.ts    Offshore replay; auto env-fetch on reset (D1)
+  scenarios/         offshore-pipeline.ts — demo fleet + timeline
+apps/ui/             Operator console (Vite + React)
+  src/App.tsx        Console shell, Realtime subscriptions, scenario controls
+  src/PlanView.tsx   Top-down tactical chart
+  src/ProfileView.tsx  Water-column profile (signature dual view)
+  src/lib.ts         Supabase client, environmentContextFromDbRows, effectiveQuality + env (D1)
+  src/styles.css     Maritime ink design system (from design mock)
+  orchestrator-api-plugin.ts  Dev-only: proxy /api/* to orchestrator handlers
+example_operator_console_design.html  Design spec / binding reference (static mock)
+SCENARIO_OFFSHORE.md  Offshore demo runbook
 supabase/migrations/ S0–C2 DDL (local source of truth; apply remote via MCP)
 scripts/             lint-engine.mjs, lint-rollup-purity.mjs, lint-planner-purity.mjs, verify-supabase.mjs
-EXPANSION_REGISTER.md  Canonical plan — **Phase D next**
+  copernicus-env-subset.py   Copernicus salinity → JSON (D1-import)
+  requirements-env-import.txt  Python deps for Copernicus bridge
+EXPANSION_REGISTER.md  Canonical plan — **D3 next**
 C1_VOLUME_PATROL.md    C1 archive (complete — reference for volume patrol)
 A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 ```
@@ -214,11 +274,22 @@ A1_REVISE_3D.md      A1 3D spec (complete — reference only)
 
 - **15/15** tables reachable via REST
 - RLS enabled; anon read; service role writes
-- Demo seed: 3 missions (incl. `mission-volume` AREA patrol), 2 assets, assignments, 13 config keys
+- Demo seed: **offshore pipeline scenario** — 4 assets, 2 missions, pipeline AREA patrol ([SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md))
 
 ```bash
 pnpm db:verify    # REST — expect 15/15 tables
-pnpm verify       # lint + build + ~200 tests
+pnpm verify       # lint + build + ~213 tests
+```
+
+### Environmental data (D1)
+
+```bash
+# Fetch Open-Meteo + Copernicus → environment_samples (requires SUPABASE_* in .env)
+node apps/orchestrator/dist/cli.js env-fetch 0
+node apps/orchestrator/dist/cli.js env-fetch --all-ticks
+
+# Copernicus needs: pip install -r scripts/requirements-env-import.txt
+# Live API tests: RUN_LIVE_ENV_TESTS=1 pnpm --filter @mission-orchestrator/env-import test
 ```
 
 ---
@@ -245,19 +316,30 @@ node apps/orchestrator/dist/cli.js inspect
 node apps/orchestrator/dist/cli.js sim 2 && node apps/orchestrator/dist/cli.js tick 2
 ```
 
-### UI
+### Operator console (primary demo)
 
 ```bash
 pnpm --filter @mission-orchestrator/ui dev   # → http://localhost:5173
 ```
+
+The dev server builds the orchestrator and mounts `/api/*` via `orchestrator-api-plugin.ts` — no separate API process.
+
+**Console layout:** fleet rail (left) · plan view + water-column profile (center) · alerts + recommendations (right) · scenario timeline (footer).
+
+Use **Next ▶** or the scrubber to advance ticks 0–8. **Reset** replays from tick 0 and auto-refreshes env data (D1). Tick **4** = UUV comms loss → drift-aware search ellipse, alerts, plan cards. See [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md).
+
+**Requires:** `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` in `.env` (Realtime). Tick controls also need `SUPABASE_SERVICE_ROLE_KEY` for the Vite plugin's orchestrator handlers.
 
 ---
 
 ## Architecture (frozen seams)
 
 ```
-Simulator → reports → ingestReports → reconcile() → belief_facts
+Open-Meteo / Copernicus ──→ env-fetch ──→ environment_samples
 environment_samples ──→ loadEnvironmentContext() ──→ EnvironmentContext
+                                                              ├──→ envMult factors (D1)
+                                                              └──→ MotionModel.predict drift (D1.2)
+Simulator → reports → ingestReports → reconcile() → belief_facts
 comms_links ──→ loadCommsModel() ──→ CommsModel (route, linkUtilization, pathDelay)
 task_volume_visits ──→ loadVolumeVisits() ──→ EngineInput.volumeVisits
                                                               ↓
@@ -269,6 +351,8 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
                     (patrol: handles + planningOverrides in sandbox only)
                               ↓
               applyPlan (gates: capacity, comms, pointing) → assignments
+                                                              ↓
+apps/ui/  ← Supabase Realtime + /api/tick/* + /api/apply-plan (operator console)
 ```
 
 **Invariants (CI enforces #1, #2, #6):**
@@ -288,7 +372,9 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
 | Check | Result |
 |-------|--------|
 | `pnpm db:verify` | 15/15 tables, anon RLS OK |
-| `pnpm verify` | ~200 passed, 1 todo (Kalman-readiness) |
+| `pnpm verify` | ~210 passed, 1 todo (Kalman-readiness) |
+| Live env tests | `RUN_LIVE_ENV_TESTS=1` — Open-Meteo + Copernicus + DB round-trip green |
+| D1 env-fetch | ~200 rows/tick upserted (150 Open-Meteo + 50 Copernicus) |
 | Engine purity lint | Passed |
 | Rollup leaf-agnostic lint | Passed |
 | Planner opaque-handle lint | Passed |
@@ -319,18 +405,24 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
 16. **Decay test pattern** — move vehicle out of range when testing revisit decay, or visits refresh every tick (C1 lesson).
 17. **Scan time / dwell (future)** — extend `VolumeVisitRecord` + `cellVisitScore` body or add `ObjectiveTerm`; do not reshape rollup (W18).
 18. **Mixed POINT+AREA guard** — AREA tasks need assignments on the AREA task_id to get non-zero coverage.
+19. **Operator console (UI-1)** — design bindings documented in [`example_operator_console_design.html`](example_operator_console_design.html); coverage and confidence are **separate** in header pills (P6).
+20. **UI tick controls** — use `pnpm --filter @mission-orchestrator/ui dev`, not bare `vite` before first orchestrator build.
+21. **D1 import boundary** — APIs write `environment_samples` only; engine reads via `EnvironmentContext` (never fetch inside `packages/engine`).
+22. **D1 factors no-op without env** — `DEFAULT_ENV_FACTORS` matches motion-only when `environmentContext` absent (B2 guard).
+23. **Copernicus salinity** — Python bridge `scripts/copernicus-env-subset.py`; TypeScript orchestrates, NetCDF parsed in Python.
+24. **Search ellipse drift (D1.2)** — lost-contact ellipse **center** shifts with current/wind via `environmentDriftMs`; uncertainty still from propagated Q.
 
 ---
 
 ## Known gaps (non-blocking)
 
-1. **Phase D** — imported data, threats, spoofing, LLM, Kalman, scan-time (seams ready)
-2. **C1-future** — polygon footprint · thermocline z band · multi-leg patrol · per-cell `dwell_s`
-3. **Alert demo tuning** — salience ≥ 0.4 with default seed
-4. **UI Accept** — wire to orchestrator API / Edge Function
-5. **Sim idempotency** — upsert or `--force`
-6. **UAV seed scenario** — `z_m` belief fact for air-domain demo
-7. **D2 ingest delay** — `ingestReports` does not yet apply `pathDelay` (shape ready in A3)
+1. **Phase D (remaining)** — D3–D5 threats/spoofing/LLM, D6 Kalman/MIP/scan-time
+2. **D1-future** — Sentinel Hub EO proxy · grid interpolation beyond nearest-neighbor
+3. **C1-future** — polygon footprint · thermocline z band · multi-leg patrol · per-cell `dwell_s`
+4. **Alert demo tuning** — salience ≥ 0.4 with default seed (offshore tick 4 usually fires)
+5. **UI contacts rail** — `tracks` table wired when external contacts exist in scenario
+6. **UI operating-point buttons** — drawer shows current op; manual `set_operating_point` not exposed in UI yet
+7. **Sim idempotency** — upsert or `--force`
 
 ---
 
@@ -339,10 +431,15 @@ assignments + missionDefs + belief + commsModel + motionModel + environmentConte
 | File | Purpose |
 |------|---------|
 | **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** | **Primary pickup** — Phase D scope, tier reference |
-| `packages/engine/src/envFactors/` | D1 — replace stub bodies (salinity, seaState, fog) |
-| `packages/engine/src/environmentContext.ts` | D1 — grid/interpolation body |
-| `packages/engine/src/commsModel.ts` | D2 — import-driven graph body |
-| `packages/engine/src/ingest.ts` | D2 — apply `pathDelay` on delivery |
+| `packages/env-import/` | **D1-import** — Open-Meteo, Copernicus, validation |
+| `packages/engine/src/envFactors/` | D1 factor bodies + `curves.ts` |
+| `packages/engine/src/motionModel.ts` | D1.2 — `environmentDriftMs`, current/wind drift |
+| `packages/engine/src/environmentContext.ts` | `FieldKind` registry, nearest-neighbor sample |
+| `packages/db/environment.ts` | `loadEnvironmentContext`, `upsertEnvironmentSamples` |
+| `apps/orchestrator/src/env-fetch.ts` | CLI + scenario wiring |
+| `scripts/copernicus-env-subset.py` | Copernicus salinity NetCDF → JSON |
+| `packages/engine/src/commsModel.ts` | Comms graph — `buildCommsModel`, `pathDelay` (A3 + D2) |
+| `packages/engine/src/ingest.ts` | D2 — delivery ts + hold until `now` |
 | `packages/engine/src/objective.ts` | D3 — exposure/risk terms |
 | `packages/engine/src/reconcile.ts` | D4 — spoofing body |
 | `packages/engine/src/summarize.ts` | D5 — LLM body |

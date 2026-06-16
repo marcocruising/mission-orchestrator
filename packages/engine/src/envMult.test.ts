@@ -10,7 +10,7 @@ import {
 } from "./envMult.js";
 import { envMultMotion } from "./envMult.js";
 import { staticEnvironmentContext } from "./environmentContext.js";
-import { effectiveQuality, slantRangeKm, type SensorSpec, type VehicleState } from "./coverage.js";
+import { effectiveQuality, slantRangeKm, type SensorSpec, type VehicleState, isInfeasible } from "./coverage.js";
 
 const passiveAcoustic: SensorSpec = {
   sensor: "passive_acoustic",
@@ -64,7 +64,7 @@ describe("envMult (A0.2 — product over extensible factor list)", () => {
     expect(envMult([], ctx())).toBe(1);
   });
 
-  it("DEFAULT_ENV_FACTORS preserves motion-only behavior", () => {
+  it("DEFAULT_ENV_FACTORS without environment matches motion-only", () => {
     const c = ctx({ speed_kn: 7, top_speed_kn: 8 });
     expect(envMult(DEFAULT_ENV_FACTORS, c)).toBeCloseTo(
       envMultMotion(1.6, 7, 8),
@@ -72,7 +72,7 @@ describe("envMult (A0.2 — product over extensible factor list)", () => {
     );
   });
 
-  it("motion-only subset matches full DEFAULT registry (A4 stubs are no-op)", () => {
+  it("motion-only subset matches DEFAULT when no environment is attached", () => {
     const c = ctx({ speed_kn: 4, top_speed_kn: 8 });
     expect(envMult(DEFAULT_ENV_FACTORS, c)).toBeCloseTo(envMult([motionEnvFactor], c), 12);
   });
@@ -131,7 +131,7 @@ describe("effectiveQuality uses envMult factor list (A0.2 regression)", () => {
   });
 });
 
-describe("A4 env factor registry (stub bodies)", () => {
+describe("A4 env factor registry (D1 bodies)", () => {
   const c = ctx({ speed_kn: 4, top_speed_kn: 8 });
   const env = staticEnvironmentContext(100, {
     salinity_psu: 35,
@@ -140,22 +140,52 @@ describe("A4 env factor registry (stub bodies)", () => {
   });
   const withEnv: EnvMultContext = { ...c, environment: env };
 
-  it("salinityFactor stub returns 1.0 with or without environment data", () => {
+  it("salinityFactor is 1 at reference PSU for passive_acoustic", () => {
     expect(salinityFactor(c)).toBe(1);
     expect(salinityFactor(withEnv)).toBe(1);
   });
 
-  it("seaStateFactor stub returns 1.0 with or without environment data", () => {
-    expect(seaStateFactor(c)).toBe(1);
+  it("salinityFactor degrades when PSU deviates from reference", () => {
+    const lowSal = staticEnvironmentContext(100, { salinity_psu: 28 });
+    const degraded: EnvMultContext = { ...c, environment: lowSal };
+    expect(salinityFactor(degraded)).toBeLessThan(1);
+    expect(salinityFactor(degraded)).toBeGreaterThan(0.2);
+  });
+
+  it("salinityFactor is no-op for non-acoustic sensors", () => {
+    const eoCtx: EnvMultContext = {
+      ...withEnv,
+      sensor: { sensor: "eo_ir", base_quality: 0.9, max_range_km: 12, k_motion: 0.36 },
+    };
+    expect(salinityFactor(eoCtx)).toBe(1);
+  });
+
+  it("seaStateFactor degrades surface eo_ir in rough seas", () => {
+    const surface: EnvMultContext = {
+      ...withEnv,
+      sensor: { sensor: "eo_ir", base_quality: 0.9, max_range_km: 12, k_motion: 0.36 },
+      vehicle: { ...c.vehicle, depth_m: 0 },
+    };
+    expect(seaStateFactor(surface)).toBeLessThan(1);
+  });
+
+  it("seaStateFactor is no-op for submerged passive_acoustic", () => {
     expect(seaStateFactor(withEnv)).toBe(1);
   });
 
-  it("fogFactor stub returns 1.0 with or without environment data", () => {
-    expect(fogFactor(c)).toBe(1);
+  it("fogFactor degrades eo_ir in low visibility", () => {
+    const eoCtx: EnvMultContext = {
+      ...withEnv,
+      sensor: { sensor: "eo_ir", base_quality: 0.9, max_range_km: 12, k_motion: 0.36 },
+    };
+    expect(fogFactor(eoCtx)).toBeCloseTo(0.5, 5);
+  });
+
+  it("fogFactor is no-op for passive_acoustic", () => {
     expect(fogFactor(withEnv)).toBe(1);
   });
 
-  it("registering stub factors in DEFAULT does not change quality vs motion-only", () => {
+  it("registry without environment matches motion-only", () => {
     const target = { target_x: 2, target_y: 0, target_depth_m: 0 };
     const vehicle: VehicleState = {
       asset_id: "v1",
@@ -166,8 +196,31 @@ describe("A4 env factor registry (stub bodies)", () => {
       top_speed_kn: 8,
     };
     const motionOnly = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, [motionEnvFactor]);
-    const fullRegistry = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, DEFAULT_ENV_FACTORS, env);
+    const fullRegistry = effectiveQuality(passiveAcoustic, target, vehicle, 0.5, DEFAULT_ENV_FACTORS);
     expect(fullRegistry as number).toBeCloseTo(motionOnly as number, 12);
+  });
+
+  it("registry with environment degrades surface eo_ir vs motion-only", () => {
+    const target = { target_x: 12, target_y: 10, target_depth_m: 0 };
+    const vehicle: VehicleState = {
+      asset_id: "v1",
+      x_km: 10,
+      y_km: 10,
+      depth_m: 0,
+      speed_kn: 4,
+      top_speed_kn: 22,
+    };
+    const eoIr: SensorSpec = {
+      sensor: "eo_ir",
+      base_quality: 0.88,
+      max_range_km: 12,
+      k_motion: 0.36,
+    };
+    const motionOnly = effectiveQuality(eoIr, target, vehicle, 0.5, [motionEnvFactor], env);
+    const full = effectiveQuality(eoIr, target, vehicle, 0.5, DEFAULT_ENV_FACTORS, env);
+    expect(isInfeasible(motionOnly)).toBe(false);
+    expect(isInfeasible(full)).toBe(false);
+    expect(full as number).toBeLessThan(motionOnly as number);
   });
 
   it("replacing a registry factor with 0.5 scales the product by half", () => {

@@ -1,5 +1,6 @@
 import { covToEllipse, zUncertainty, type UncertaintyRegion } from "./estimate.js";
 import { kmToM, M_PER_KM } from "./spatial.js";
+import type { EnvironmentContext } from "./environmentContext.js";
 import {
   defaultConstantVelocityModel,
   initialLostContactState,
@@ -43,12 +44,13 @@ export function ownAssetSearchUncertainty(
   lastContactTs: number,
   k = 2,
   minorAxisRatio = 0.4,
-  motionModel: MotionModel = defaultConstantVelocityModel
+  motionModel: MotionModel = defaultConstantVelocityModel,
+  environment?: EnvironmentContext
 ): SearchUncertainty {
   const dtSeconds = Math.max(0, now - lastContactTs);
   const vMaxMs = vMaxKn * KNOTS_TO_M_S;
   const initial = initialLostContactState(kmToM(x_km), kmToM(y_km), z_m, vMaxMs);
-  const propagated = propagateState(initial.mean, initial.cov, dtSeconds, motionModel);
+  const propagated = propagateState(initial.mean, initial.cov, dtSeconds, motionModel, environment);
   const displayCov = horizontalCovWithAspect(propagated.cov, minorAxisRatio);
   const region = covToEllipse(displayCov, propagated.mean, k);
   const z = zUncertainty(propagated.mean, propagated.cov);
@@ -67,7 +69,8 @@ export function ownAssetSearchRegion(
   lastContactTs: number,
   k = 2,
   minorAxisRatio = 0.4,
-  motionModel?: MotionModel
+  motionModel?: MotionModel,
+  environment?: EnvironmentContext
 ): UncertaintyRegion {
   return ownAssetSearchUncertainty(
     x_km,
@@ -78,7 +81,8 @@ export function ownAssetSearchRegion(
     lastContactTs,
     k,
     minorAxisRatio,
-    motionModel
+    motionModel,
+    environment
   ).region;
 }
 

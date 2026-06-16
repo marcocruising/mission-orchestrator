@@ -37,6 +37,35 @@ export async function loadEnvironmentSamples(
   return rows;
 }
 
+export interface EnvironmentSampleInsert {
+  ts: number;
+  kind: FieldKind;
+  x_km: number;
+  y_km: number;
+  depth_m: number;
+  value: number;
+}
+
+/** Upsert imported rows into `environment_samples` (D1-import). */
+export async function upsertEnvironmentSamples(
+  client: SupabaseClient,
+  rows: EnvironmentSampleInsert[]
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const { error } = await client.from("environment_samples").upsert(
+    rows.map((r) => ({
+      ts: r.ts,
+      kind: r.kind,
+      x_km: r.x_km,
+      y_km: r.y_km,
+      depth_m: r.depth_m,
+      value: r.value,
+    }))
+  );
+  if (error) throw error;
+  return rows.length;
+}
+
 /** Load environment context for engine tick — nearest-neighbor over samples + static defaults. */
 export async function loadEnvironmentContext(
   client: SupabaseClient,

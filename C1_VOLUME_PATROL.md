@@ -4,7 +4,7 @@
 **Prerequisites:** Phase A0–A4 ✅ · Phase B guards ✅ · C2 directional sensors ✅  
 **Full register:** [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § C1 · Runbook: [HANDOVER.md](HANDOVER.md)
 
-> **Agent:** This file documents the **C1 design** for reference. Phase C is complete; new work starts at **Phase D** ([HANDOVER.md](HANDOVER.md)).
+> **Agent:** This file documents the **C1 design** for reference. Phase C is complete; new work starts at **Phase D3** ([HANDOVER.md](HANDOVER.md)).
 
 ---
 
@@ -189,8 +189,8 @@ For each **sensor demand** on the task (same loop pattern as `computePointTaskLe
 
 | Phenomenon | C1 behavior | Later |
 |------------|-------------|-------|
-| **Currents** | Belief position already used; when D1 adds drift to `MotionModel`, cell visitation improves automatically | D1 |
-| **Salinity isoclines** | `effectiveQuality` per **cell center** → `salinityFactor` stub (=1 today) | D1 body |
+| **Currents** | `MotionModel.environmentDriftMs` shifts lost-contact ellipse center (D1.2 ✅) | — |
+| **Salinity isoclines** | `salinityFactor` on `effectiveQuality` per cell center (D1 ✅) | — |
 | **Thermocline** | Fixed `z_min_m` / `z_max_m` on task | D1+ optional dynamic z band |
 
 **Anti-pattern:** salinity/thermocline formulas inside `coverageVolume.ts`.
@@ -239,10 +239,20 @@ Minimal functional sweep — **not** a route optimizer. Preserves seams for futu
 | `packages/db/src/volume.ts` | Load/save visits, parse footprint jsonb |
 | `supabase/migrations/20250614000009_c1_volume_patrol.sql` | DDL |
 | `packages/engine/src/directional.test.ts` | C1b planner + C2 integration tests |
+| `apps/ui/src/PlanView.tsx` | **UI-1** — visited volume cells (green) on plan view chart |
+| [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) | Offshore demo — pipeline AREA patrol ticks 0–8 in operator console |
 
 ---
 
-## Deferred (explicit — future body swaps)
+## UI visualization (UI-1)
+
+Volume patrol coverage is visible in the **operator console** plan view ([`example_operator_console_design.html`](example_operator_console_design.html)):
+
+- **Green cells** = rows in `task_volume_visits` (visited with sufficient peak quality)
+- **Grey cells** = discretized footprint cells not yet visited
+- **Surface vs subsea** corridors — dashed blue (subsea AABB) vs solid teal (surface AABB)
+
+Run: `pnpm --filter @mission-orchestrator/ui dev` → advance ticks 0–3 to see cells turn green along the pipeline. See [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md).
 
 | ID | Scope |
 |----|--------|
@@ -253,20 +263,23 @@ Minimal functional sweep — **not** a route optimizer. Preserves seams for futu
 
 ---
 
-## Demo scenario (recommended seed)
+## Demo scenario (recommended)
 
-- **Mission:** subsurface box patrol  
-- **Volume:** center `(2 km, 0)`, half 1 km × 1 km, `z_min_m = -80`, `z_max_m = -40`, `cell_size_m = 500`, `revisit_interval_s = 600`  
-- **Asset:** `uuv-1` with passive_acoustic, assigned to AREA task  
-- **Expect:** cov_t depends on position; decay after 600 s without revisit  
+**Primary demo:** offshore pipeline scenario — [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) · operator console at http://localhost:5173
 
----
+- **Missions:** `mission-pipeline-guard` — surface + subsea AREA patrol along 14 km corridor  
+- **Volume:** center `(9 km, 10 km)`, half 7 × 0.75 km; subsea band `z −65…−55 m`, surface `z −2…+2 m`  
+- **Assets:** `usv-sentinel-a` (surface), `uuv-guardian` (subsea)  
+- **Expect:** green cells accumulate ticks 0–3; tick 4 UUV comms loss drops confidence; C1b patrol plans may appear in decision column  
+
+**Legacy fixture** (minimal seed): subsurface box patrol at `(2 km, 0)` — see migration seed comments.
 
 ## Health check
 
 ```bash
 pnpm db:verify && pnpm verify
-# 15/15 tables · ~200 tests · lint-rollup + lint-planner + lint-engine green
+pnpm --filter @mission-orchestrator/ui dev   # visual check — green volume cells on plan view
+# 15/15 tables · ~213 tests · lint-rollup + lint-planner + lint-engine green
 ```
 
 ---
@@ -283,4 +296,4 @@ pnpm db:verify && pnpm verify
 
 ## Agent workflow
 
-Phase C complete. For new work see [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § Phase D.
+Phase C complete. For new work see [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) § Phase D (**D3 next**; D1 env + D2 comms complete).

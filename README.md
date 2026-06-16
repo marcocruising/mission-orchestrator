@@ -2,7 +2,9 @@
 
 > **Project status (June 2026):** Original build ladder **S0–S10 is complete**. Structural expansion
 > **Phase A0–A4** and **Phase B** complete. **Phase C complete** (C1a volume patrol, C1b planner sweep, C2 directional sensors).
-> **Active work: Phase D** — Tier 1 bodies (imported env/comms, threats, spoofing, LLM). Runbook: [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
+> **UI-1 complete** — operator console frontend ([`example_operator_console_design.html`](example_operator_console_design.html) → `apps/ui/`).
+> **D2 complete** — comms graph in seed, `ingestReports` pathDelay + delivery hold.
+> **Active work: Phase D3+** — threats, spoofing, LLM. Runbook: [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md).
 
 You are building **Mission Orchestrator**: single-operator decision support for a fleet of unmanned
 naval vehicles. When a vehicle fails or degrades, the system recomputes how every mission is affected
@@ -71,9 +73,9 @@ evaluated. 5. All assignment changes go through `applyPlan`, which re-validates 
 ## Stack (decided — do not deliberate)
 
 TypeScript everywhere · pnpm monorepo: `packages/engine` (pure, zero deps), `packages/db` (Supabase
-client + typed queries), `apps/orchestrator` (tick loop), `apps/ui` (late) · **Supabase** (Postgres),
+client + typed queries), `apps/orchestrator` (tick loop), `apps/ui` (operator console) · **Supabase** (Postgres),
 local via `supabase start`; schema in `supabase/migrations/*.sql`, seeded by `supabase/seed.sql` ·
-**Vitest** (engine tests pure, no DB; integration tests vs local Supabase) · UI via Supabase Realtime.
+**Vitest** (engine tests pure, no DB; integration tests vs local Supabase) · UI: Supabase Realtime + dev orchestrator API (Vite plugin).
 
 Create tables **incrementally** — each step's migration adds only what it needs.
 
@@ -250,9 +252,12 @@ cascades, assumptions; rank. ✓ cascades name the degraded secondary mission; a
 `assignments` and recomputes `mission_state`. **Full closed loop in the terminal — the mandatory system.**
 
 ### Phase F — Tangible
-**S9 · Minimal UI over Realtime.** Map with asset dots + **growing search ellipse** (semi-major
-`= v_max·(now−last_contact_ts)`), mission tiles by tier, **recommendation panel** (cov delta, cascade,
-assumptions, Accept). ✓ cut comms → ellipse blooms on screen; Accept calls `applyPlan` and tiles update.
+**S9 · UI over Realtime** *(superseded by **UI-1** operator console, June 2026).* Original: map + search
+ellipse + mission tiles + recommendation panel. **UI-1** replaces that scaffold with the full operator
+console — dual tactical view (plan + water-column profile), fleet rail, mission health pills (coverage +
+confidence separate, P6), alert triage, ranked plan cards, asset drawer (sensor base vs effective),
+scenario timeline scrubber. Design spec: [`example_operator_console_design.html`](example_operator_console_design.html).
+✓ cut comms → pulsing search ellipse; Accept → `/api/apply-plan`; tick scrubber → `/api/tick/*`.
 
 ### Phase G — The trophy
 **S10 · Planner explores operating points.** `set_operating_point` varies speed; the `envMult` motion term
@@ -278,7 +283,9 @@ template for an LLM call that narrates the computed `mission_state` row (writes 
 | Threat-avoiding routing; `exposure`/`risk` > 0 | `RoutePlanner` body + `ObjectiveTerm[]` (A0.4) | S11 / D3 | ✅ terms wired (=0) |
 | Spoofing / adversarial data | `reconcile()` body (A0.1) | S12 / D4 | ✅ seam installed |
 | LLM summaries | `summarize()` body (A0.6) | S13 / D5 | ✅ seam installed |
-| Salinity / sea-state / fog | `envMult` factor list (A0.2 + **A4 ✅**) | D1 | ✅ stubs registered (=1.0) |
+| Salinity / sea-state / fog | `envMult` factor list (A0.2 + **A4 ✅**) | D1 | ✅ **bodies live** (import via `env-fetch`) |
+| Wind / current drift | `MotionModel.environmentDriftMs` (A2 + D1.2) | D1 | ✅ currents + surface windage |
+| Comms multi-hop delay | `ingestReports` + `CommsModel.pathDelay` (A3 + D2) | D2 | ✅ delivery ts + hold until `now` |
 | Dynamics-aware staleness | `Fact.half_life` → `MotionModel` body (A2) | D6 | ✅ shape installed |
 | Continuous operating points | `resolveOperatingPoint` (A0.8) | D6 | ✅ seam installed |
 | Area / sector-blanketing coverage | `computeTaskLeaf` + volume leaf | **C1a ✅** · C1b ✅ ([C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)) |
@@ -299,6 +306,8 @@ result to show. **Will fail review:** reading `world_truth` in an engine; `Date.
 function; a scalar capability; multiplying confidence into coverage; skipping the do-nothing plan;
 auto-committing without re-validation; building two steps before the first is green.
 
-**Start with S0** for a greenfield build. **For current work**, start with **Phase D** in
-[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (recommended: **D1** imported environmental data).
-Verify with `pnpm db:verify` (**15/15** tables) and `pnpm verify` (~**200** tests + rollup/planner/engine lints).
+**Start with S0** for a greenfield build. **For current work**, start with **Phase D3** in
+[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) (threats / exposure / risk — recommended after D1–D2).
+Demo the system: `pnpm --filter @mission-orchestrator/ui dev` → http://localhost:5173 ([SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md)).
+Verify with `pnpm db:verify` (**15/15** tables) and `pnpm verify` (~**213** tests + rollup/planner/engine lints).
+Refresh env data: `node apps/orchestrator/dist/cli.js env-fetch --all-ticks`.

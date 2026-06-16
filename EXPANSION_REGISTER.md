@@ -1,9 +1,9 @@
 # Expansion Register — Mission Orchestrator
 
-**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** complete · **Phase D next**
+**Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2** complete · **D3 next**
 
-> **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* · canonical plan below · C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
-> Health: `pnpm db:verify` (**15/15** tables) · `pnpm verify` (~**200** tests · 1 Kalman `test.todo`).
+> **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* · canonical plan below · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) · design mock: [`example_operator_console_design.html`](example_operator_console_design.html).
+> Health: `pnpm db:verify` (**15/15** tables) · `pnpm verify` (~**213** tests · 1 Kalman `test.todo`).
 
 This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
@@ -13,8 +13,10 @@ This replaces the flat Deferred register in [README.md](README.md). Every expans
 ## Current state (honest)
 
 The original freeze gate (before S4) was not run. S4–S10 shipped on a scalar-`Fact` belief model,
-hardcoded `envMult`, last-write-by-ts ingest, and an ad-hoc UI search ellipse. That is fine for the
-demo loop, but several future features are **rewrites today**, not body swaps.
+hardcoded `envMult`, last-write-by-ts ingest, and a minimal UI scaffold. Phase **UI-1** (June 2026)
+replaced that scaffold with the full **operator console** from [`example_operator_console_design.html`](example_operator_console_design.html)
+— dual tactical view, fleet rail, decision column, scenario timeline. Several future features remain
+**rewrites** if their shapes are missing; the console itself is the live demo surface for Phase D bodies.
 
 This register merges:
 
@@ -51,7 +53,7 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **A2 / T2.6** | `environmentContext.ts` | ✅ Done | `staticEnvironmentContext`, `sampleEnvironmentContext`, `buildEnvironmentContext` |
 | **A2 / T2.6** | `environment_samples` | ✅ Done | Migration `a2_environment_samples` on remote via Supabase MCP |
 | **A2 wire** | `EngineInput` | ✅ Done | + `motionModel`, `environmentContext`; `loadEnvironmentContext` in db adapter |
-| **A2 wire** | `effectiveQuality` | ✅ Done | Passes `environmentContext` into `envMult` ctx; A4 stub factors registered |
+| **A2 wire** | `effectiveQuality` | ✅ Done | Passes `environmentContext` into `envMult` ctx; D1 factor bodies registered |
 
 **Commit boundary:** `A2: motion and environment shapes`.
 
@@ -71,10 +73,10 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 
 | Step | Module | Status | Notes |
 |------|--------|--------|-------|
-| **A4** | `envFactors/salinityFactor.ts` | ✅ Done | Stub → 1.0; samples `salinity_psu` at vehicle position |
-| **A4** | `envFactors/seaStateFactor.ts` | ✅ Done | Stub → 1.0; samples `sea_state_hs_m` |
-| **A4** | `envFactors/fogFactor.ts` | ✅ Done | Stub → 1.0; samples `fog_vis_km` |
-| **A4** | `DEFAULT_ENV_FACTORS` | ✅ Done | `[motion, salinity, seaState, fog, beamGain]` — salinity/sea/fog stubs until D1; beamGain no-op when omnidirectional |
+| **A4** | `envFactors/salinityFactor.ts` | ✅ Done | D1 body — PSU curve; `passive_acoustic` only |
+| **A4** | `envFactors/seaStateFactor.ts` | ✅ Done | D1 body — Hs degradation; surface sensors |
+| **A4** | `envFactors/fogFactor.ts` | ✅ Done | D1 body — visibility; `eo_ir` only |
+| **A4** | `DEFAULT_ENV_FACTORS` | ✅ Done | `[motion, salinity, seaState, fog, beamGain]` — D1 bodies live; beamGain no-op when omnidirectional |
 
 **Commit boundary:** `A4: envMult factor registry` · **C2** added `beamGainFactor`.
 
@@ -92,6 +94,53 @@ into one ordered plan: **structural shapes and seams first → guard tests → T
 | **C2 DDL** | `c2_directional_sensors` | ✅ Done | `asset_sensors.beam_half_angle_deg` nullable |
 
 **Commit boundaries:** `C1: volume patrol (AABB)` · `C1b: patrol sweep` · `C2: directional sensors`.
+
+### Progress log (UI-1 — operator console frontend) ✅
+
+| Item | Status | Notes |
+|------|--------|-------|
+| **Design port** | ✅ Done | [`example_operator_console_design.html`](example_operator_console_design.html) → `apps/ui/src/styles.css` |
+| **Shell + layout** | ✅ Done | `App.tsx` — header / fleet / stage / decision / timeline grid |
+| **Plan view** | ✅ Done | `PlanView.tsx` — top-down chart, volume cells, search ellipses, domain chevrons |
+| **Profile view** | ✅ Done | `ProfileView.tsx` — water-column elevation (signature dual view) |
+| **Realtime** | ✅ Done | Supabase subscriptions: `belief_facts`, `mission_state`, `plan_eval`, `alert_log`, `task_volume_visits` |
+| **Scenario API** | ✅ Done | `orchestrator-api-plugin.ts` + `api-handlers.ts` — tick scrubber, reset, apply-plan |
+| **Offshore demo** | ✅ Done | [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) — ticks 0–8, UUV comms loss at tick 4 |
+| **Asset drawer** | ✅ Done | Sensor base vs effective via engine `effectiveQuality`; op point readout |
+| **Contacts rail** | stub | Empty state until `tracks` populated in scenario |
+| **Env samples (D1)** | ✅ Done | Realtime on `environment_samples`; drawer + search ellipses use env context |
+
+**Commit boundary:** `UI-1: operator console frontend`.
+
+### Progress log (Phase D1 — imported environmental data) ✅
+
+| Step | Module | Status | Notes |
+|------|--------|--------|-------|
+| **D1-import** | `packages/env-import/` | ✅ Done | Open-Meteo Marine + Weather; Copernicus salinity via Python bridge |
+| **D1-import CLI** | `env-fetch` | ✅ Done | `orchestrator env-fetch [tick] \| --all-ticks` · `--skip-copernicus` |
+| **D1-import wire** | `scenario-run.ts` | ✅ Done | `replayToTick` auto-runs env-fetch after reset |
+| **D1 geo** | `offshore-pipeline.ts` | ✅ Done | 56.5°N, 1.0°E anchor · 5×5 km grid · depths 0 + 60 m |
+| **D1 factors** | `envFactors/curves.ts`, `salinity`, `seaState`, `fog` | ✅ Done | Sensor-specific graded multipliers; no-op without env |
+| **D1.2 motion** | `motionModel.ts` | ✅ Done | `environmentDriftMs` — currents + surface/air windage |
+| **D1 FieldKind** | `wind_direction_deg` | ✅ Done | Additive field on `EnvironmentContext` |
+| **D1 validation** | `validateSamples.ts` | ✅ Done | Range checks; `RUN_LIVE_ENV_TESTS=1` integration tests |
+| **D1 DB** | `upsertEnvironmentSamples` | ✅ Done | `packages/db/environment.ts` |
+| **D1 UI** | `App.tsx`, `PlanView.tsx`, `lib.ts` | ✅ Done | Env-degraded effective quality; drift-aware search ellipses |
+
+**APIs:** Open-Meteo (free) · Copernicus Marine (`COPERNICUSMARINE_*`) · Sentinel Hub optional (not wired).
+
+**Commit boundary:** `D1: imported environmental data`.
+
+### Progress log (Phase D2 — comms pathDelay in ingest) ✅
+
+| Step | Module | Status | Notes |
+|------|--------|--------|-------|
+| **D2 ingest** | `ingest.ts` | ✅ Done | `IngestOptions` — `commsModel`, `now`, `queryTs`; delivery ts on facts |
+| **D2 wire** | `tick.ts`, `cli.ts` | ✅ Done | Rebuild belief from `loadReportsUpTo` + DB `loadCommsModel` |
+| **D2 topology** | `offshore-pipeline.ts`, `seed.sql` | ✅ Done | Relay buoy, acoustic gateway, sat terminal |
+| **D2 DB** | `belief.ts` | ✅ Done | `loadReportsUpTo(maxSentTs)` |
+
+**Commit boundary:** `D2: comms pathDelay in ingest`.
 
 ### Progress log (Phase B — guard tests)
 
@@ -119,7 +168,7 @@ These came from the post-S10 gap analysis and Phase A0 implementation. **Read be
 | W4 | **Use factor/term lists** | New env effects → `EnvFactor`; new costs → `ObjectiveTerm`; no core branches |
 | W5 | **Comms is a graph, not a scalar** | Relay paths need `route()` + per-link utilization in A3 — don't hack `fleetUsage` |
 | W6 | **Operating points opaque to planner** | Handles resolved only in `resolveOperatingPoint` (A0.8) |
-| W7 | **UI ellipse unified with engine** | Done in A1/A2 — `ownAssetSearchUncertainty` + MotionModel propagation |
+| W7 | **UI ellipse unified with engine** | Done in A1/A2 + **UI-1** — `PlanView` uses `ownAssetSearchUncertainty`; profile view uses signed z |
 | W8 | **Engine purity** | `CommsModel`, `EnvironmentContext` injected on `EngineInput` — never DB inside engine |
 | W9 | **Gate before grade** | Hard cutoffs (comms, depth, range) prune before objective scoring (P5) |
 | W10 | **One step at a time** | Green suite between steps; don't batch A1 sub-shapes without tests |
@@ -162,7 +211,10 @@ does not reshape `cov_t → cov_m → tier` or `MissionState` columns.
 Phase A — Structural foundation (T2 shapes + T1 seam retrofits)   ✅ COMPLETE
 Phase B — Guard tests (T3 prerequisites)                          ✅ COMPLETE
 Phase C — Tier 3 bodies (volume patrol, patrol sweep, directional sensors)  ✅ COMPLETE
-Phase D — Tier 1 bodies (threats, spoofing, LLM, imported-data factors, solver)  ← NEXT
+UI-1    — Operator console frontend (design mock → live React app)  ✅ COMPLETE
+Phase D1 — Imported env data (import + envMult + motion drift)  ✅ COMPLETE
+Phase D2 — Comms pathDelay in ingest (graph + delivery hold)     ✅ COMPLETE
+Phase D — Remaining Tier 1 bodies (D3–D6)                      ← NEXT
 ```
 
 Do not start Phase C until Phase A + B are green. Imported environmental/comms data lands in Phase A
@@ -235,9 +287,9 @@ type EnvFactor = (ctx: EnvMultContext) => number;
 
 const DEFAULT_ENV_FACTORS: EnvFactor[] = [
   motionEnvFactor,
-  salinityFactor,    // stub → 1.0 until D1
-  seaStateFactor,    // stub → 1.0 until D1
-  fogFactor,         // stub → 1.0 until D1
+  salinityFactor,    // D1 ✅ — PSU curve
+  seaStateFactor,    // D1 ✅ — Hs degradation
+  fogFactor,         // D1 ✅ — visibility
 ];
 ```
 
@@ -289,8 +341,7 @@ seam-swap compiles at same call sites.
 - `Track = { id, estimate, last_updated, contributing[], classification? }`.
 - Supabase `tracks` table (parallel to `belief_facts` — own assets stay on Facts for now).
 - `UncertaintyRegion = { center, semiMajor, semiMinor, angleRad }` from `covToEllipse`.
-- **Own-asset search ellipse uses the same type** — refactor UI `searchEllipseSemiMajor` to consume
-  `UncertaintyRegion` derived from a degraded own-asset `Estimate` or reachable-set `MotionModel.predict`.
+- **Own-asset search ellipse uses the same type** — **UI-1 done:** `PlanView.tsx` consumes `ownAssetSearchUncertainty` → `UncertaintyRegion` (not ad-hoc `v_max·Δt`).
 
 **Tests:** one detection → fat blob; second detection shrinks region; own-asset + track share one renderer.
 
@@ -449,9 +500,9 @@ type EnvFactor = (ctx: EnvironmentContext, sensor: SensorSpec, vehicle: VehicleS
 
 const ENV_FACTORS: EnvFactor[] = [
   motionFactor,           // e^(-k·speed/vmax) — today
-  salinityFactor,         // stub → 1.0 until import
-  seaStateFactor,         // stub → 1.0
-  fogFactor,              // stub → 1.0
+  salinityFactor,         // D1 ✅ — PSU curve
+  seaStateFactor,         // D1 ✅ — Hs degradation
+  fogFactor,              // D1 ✅ — visibility
   beamGainFactor,         // C2 — no-op when beam_half_angle_deg omitted
 ];
 ```
@@ -475,14 +526,15 @@ const ENV_FACTORS: EnvFactor[] = [
 - [x] A0.6 `summarize` entry point green
 - [x] A0.7 `CommsModel` + fleet gate green
 - [x] A0.8 `resolveOperatingPoint` green
-- [x] A1 initial T2.1–T2.4 (2D cv4): estimation modules, `tracks` table, UI ellipse via `ownAssetSearchRegion`
+- [x] A1 initial T2.1–T2.4 (2D cv4): estimation modules, `tracks` table, UI search region via `ownAssetSearchUncertainty` (**UI-1**)
 - [x] **A1-revise:** 3D `spatial.ts`, cv6 state, slant range, z-up adapter — [A1_REVISE_3D.md](A1_REVISE_3D.md)
 - [x] T2.5 `MotionModel` + `ConstantVelocityModel` + search region via propagated Q
 - [x] T2.6 `EnvironmentContext` + `environment_samples` migration + `loadEnvironmentContext`
 - [x] T2.7 Comms **graph** shape (`route`, `linkUtilization`) + DB tables + integration tests
-- [x] A4 envMult factor registry with motion + stub salinity/sea-state/fog factors
+- [x] A4 envMult factor registry with motion + D1 salinity/sea-state/fog factors
+- [x] **UI-1** operator console — plan + profile views, Realtime, scenario API ([HANDOVER.md](HANDOVER.md) § UI-1)
 - [ ] Kalman-readiness `test.todo` — **exists** in `estimator.test.ts`; implement in D6
-- [x] `pnpm verify` green; engine + rollup + planner purity lints pass (~200 tests, June 2026)
+- [x] `pnpm verify` green; engine + rollup + planner purity lints pass (~213 tests, June 2026)
 - [x] **C1a** volume patrol AABB + `task_volume_visits` — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md)
 - [x] **C1b** planner patrol sweep (`patrol:` handles + `planningOverrides`)
 - [x] **C2** directional sensors (`beamGainFactor`, `checkPointingGate`, `beam_half_angle_deg`)
@@ -509,7 +561,7 @@ computeTaskLeaf(task, …) → { cov_t, freshnessValues, infeasible }
 
 ## B2 — EnvMult extensibility guard (T3.2 partial) ✅
 
-Explicit gate in `guard.test.ts` + full coverage in `envMult.test.ts` — third stub factor is no-op.
+Explicit gate in `guard.test.ts` + full coverage in `envMult.test.ts` — D1 factors no-op without `EnvironmentContext` (B2 guard).
 
 ## B3 — Opaque operating-point guard (T3.2 partial) ✅
 
@@ -550,24 +602,33 @@ Explicit gate in `guard.test.ts` + full coverage in `envMult.test.ts` — third 
 
 Bodies can ship in any order once Phase A + B are complete. Mapped to original README stretch steps.
 
-## D1 — Imported environmental data bodies (was “post-hackathon”)
+## D1 — Imported environmental data bodies ✅ COMPLETE
 
-| Factor | Body | Data source |
-|--------|------|-------------|
-| `salinityFactor` | acoustic absorption vs PSU | `environment_samples` import |
-| `seaStateFactor` | surface sensor degradation vs Hs | import |
-| `fogFactor` | EO/IR cutoff vs visibility | import |
-| `MotionModel` current drift | `+ [u,v]·dt` from `current_u_ms` / `current_v_ms` | import |
-| Wind drift (surface) | lateral drift term in `MotionModel` | `wind_ms` + direction import |
+| Component | Body | Data source | Status |
+|-----------|------|-------------|--------|
+| **D1-import** | `packages/env-import/` → `environment_samples` | Open-Meteo Marine + Weather; Copernicus `so` | ✅ |
+| `salinityFactor` | PSU deviation curve — `passive_acoustic` | Copernicus via import | ✅ |
+| `seaStateFactor` | Hs degradation — surface sensors | Open-Meteo `wave_height` | ✅ |
+| `fogFactor` | Visibility cutoff — `eo_ir` | Open-Meteo `visibility` | ✅ |
+| **MotionModel drift** | `+ [u,v]·dt` currents + windage | `current_u/v_ms`, `wind_ms`, `wind_direction_deg` | ✅ |
+| **UI** | Drawer effective bars + search ellipse drift | Supabase `environment_samples` | ✅ |
 
 **Rule:** import pipeline writes `environment_samples` rows; engine reads via `EnvironmentContext` only.
 
-## D2 — Imported comms data bodies (T1.8)
+**Fetch:**
 
-- Replace `staticCommsModel` with import-driven **graph** body (`comms_links`, optional `comms_nodes`).
-- Routing: `route(asset, operator)` follows relay chain from import topology.
-- `ingestReports` applies `pathDelay` so multi-hop delayed packets arrive with correct `ts`.
-- Gate binds on **per-link utilization** (or max utilization), not scalar `fleetUsage` alone.
+```bash
+node apps/orchestrator/dist/cli.js env-fetch --all-ticks
+# Copernicus: pip install -r scripts/requirements-env-import.txt
+```
+
+**Still deferred within D1:** Sentinel Hub EO fog proxy · grid interpolation beyond nearest-neighbor.
+
+## D2 — Imported comms data bodies (T1.8) ✅ COMPLETE
+
+- `comms_links` graph loaded via `loadCommsModel` (A3 + seed topology).
+- `ingestReports` applies `pathDelay` — facts store **delivery ts**; reports held until `now`.
+- Gate binds on **per-link utilization** when graph loaded (A3).
 
 ## D3 — Threats & risk (README S11, T1.1 body)
 
@@ -600,10 +661,16 @@ All external data enters through **two ingestion surfaces** — never directly i
 
 ```
 ┌─────────────────────┐     ┌──────────────────────┐
-│ environment_samples │────▶│ EnvironmentContext   │──▶ MotionModel.predict
-│ (salinity, Hs,      │     │ .sample(kind,x,y,d)  │──▶ envMult factors
-│  wind, currents,    │     └──────────────────────┘
-│  fog)               │
+│ Open-Meteo Marine   │──┐  │ EnvironmentContext   │──▶ MotionModel.predict (drift)
+│ Open-Meteo Weather  │  ├─▶│ .sample(kind, pos)   │──▶ envMult factors (D1)
+│ Copernicus Marine   │──┘  └──────────────────────┘
+│ (Python bridge)     │              ▲
+└─────────┬───────────┘              │
+          │ env-fetch                  │
+          ▼                            │
+┌─────────────────────┐     loadEnvironmentContext()
+│ environment_samples │◀─────────────┘
+│ (7 FieldKinds)      │
 └─────────────────────┘
 
 ┌─────────────────────┐     ┌──────────────────────────────┐
@@ -656,15 +723,15 @@ All external data enters through **two ingestion surfaces** — never directly i
 | T1.1 | Threat routing; exposure/risk | A0.4 ✅ | D3 (S11) |
 | T1.2 | Spoofing | A0.1 ✅ | D4 (S12) |
 | T1.3 | LLM summaries | A0.6 ✅ | D5 (S13) |
-| T1.4 | Salinity / sea-state / fog | A0.2 ✅ + A4 ✅ | D1 |
+| T1.4 | Salinity / sea-state / fog | A0.2 ✅ + A4 ✅ | **D1 ✅** |
 | T1.5 | Dynamics-aware staleness | half_life field ✅ | D6 |
 | T1.6 | Continuous operating points | A0.8 ✅ | D6 |
 | T1.7 | Substitutable sensors | A0.3 ✅ | D6 |
-| T1.8 | Fleet comms contention | A0.7 ✅ + T2.7 ✅ | D2 |
+| T1.8 | Fleet comms contention | A0.7 ✅ + T2.7 ✅ | **D2 ✅** |
 | T1.9 | Objective normalization | A0.4 ✅ | D6 |
 | T1.10 | MIP / column-generation | A0.5 ✅ | D6 |
-| — | Wind / current motion | T2.5 + T2.6 | D1 |
-| — | Comms delay in ingest | T2.7 | D2 |
+| — | Wind / current motion | T2.5 + T2.6 | **D1 ✅** |
+| — | Comms delay in ingest | T2.7 | **D2 ✅** |
 | — | Kalman fusion | T2.3 | post-D (Tier 1 swap) |
 
 ---
@@ -693,7 +760,7 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 | S11 Threats & risk | D3 (requires A0.4) |
 | S12 Scale + spoofing | D4 (requires A0.1) + scale testing after shapes stable |
 | S13 LLM narration | D5 (requires A0.6) |
-| Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → D1 bodies |
+| Deferred: salinity / sea-state / fog | T2.6 + A4 shapes → **D1 ✅** |
 | Deferred: dynamics-aware staleness | T2.5 → D6 body |
 | Deferred: area coverage | B1 ✅ → **C1a ✅** · C1b ✅ |
 | Deferred: directional sensors | B2/B3 ✅ → **C2 ✅** |
@@ -704,19 +771,22 @@ in planner or scalar-only `fleetUsage` without per-link utilization (W5)**.
 
 # Next action
 
-**Phase D** — Tier 1 bodies behind frozen seams. Pick any order; recommended first wins for demo value:
+**Phase D3** — threats / exposure / risk (S11). D1 + D2 complete.
+
+The **operator console** is the demo surface — D2 UUV reports arrive ~3 ticks after send (multi-hop acoustic path); tick 4 comms loss stacks on delayed delivery.
 
 | Priority | Phase | Why |
 |----------|-------|-----|
-| **D1** | Imported env data (salinity, sea-state, fog, currents) | Shapes + stubs ready; `environment_samples` table exists |
-| **D2** | Comms import + `ingestReports` pathDelay | Graph + gate shipped in A3 |
+| **D2** | Comms import + `ingestReports` pathDelay | Graph + gate shipped in A3; tick 4 comms demo |
 | **D3** | Threats / exposure / risk (S11) | `ObjectiveTerm[]` wired (=0 today) |
 | **D5** | LLM narration (S13) | `summarize()` seam ready |
 | **D4** | Spoofing (S12) | `reconcile()` seam ready |
 | **D6** | Kalman, MIP, scan-time/dwell, polygon footprint | Body swaps on existing seams |
 
-**Still deferred within C (future body swaps):** C1-polygon · C1-thermocline · multi-hop patrol routes · per-cell `dwell_s` / scan time.
+**Still deferred:** Sentinel Hub EO proxy · C1-polygon · C1-thermocline · multi-hop patrol · per-cell `dwell_s`.
 
-**Health check:** `pnpm db:verify` (**15/15**) · `pnpm verify` (~**200** tests) · rollup + planner + engine lints green.
+**Health check:** `pnpm db:verify` (**15/15**) · `pnpm verify` (~**213** tests) · `node apps/orchestrator/dist/cli.js env-fetch 0` · `pnpm --filter @mission-orchestrator/ui dev` → http://localhost:5173
+
+**Live env tests:** `RUN_LIVE_ENV_TESTS=1 pnpm --filter @mission-orchestrator/env-import test`
 
 **DDL reminder:** use Supabase MCP `apply_migration` — not REST keys alone on remote.

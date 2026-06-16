@@ -1,0 +1,5 @@
+# Python deps for D1-import Copernicus salinity bridge (scripts/copernicus-env-subset.py)
+copernicusmarine>=2.0
+xarray>=2024.1
+h5py>=3.10
+netCDF4>=1.6

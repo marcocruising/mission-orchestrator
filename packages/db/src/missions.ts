@@ -131,7 +131,10 @@ export async function loadCovBaselines(client: SupabaseClient): Promise<Map<stri
   if (error) throw error;
   const map = new Map<string, number>();
   for (const row of data ?? []) {
-    if (!map.has(row.mission_id)) map.set(row.mission_id, Number(row.cov_baseline));
+    const v = Number(row.cov_baseline);
+    const prev = map.get(row.mission_id);
+    // Sticky high-water baseline — never drop below the best committed baseline (P3).
+    if (prev === undefined || v > prev) map.set(row.mission_id, v);
   }
   return map;
 }

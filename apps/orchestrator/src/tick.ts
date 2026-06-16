@@ -8,15 +8,13 @@ import {
   applyPlan,
   ingestReports,
   Simulator,
-  type Asset,
-  type MissionDef,
-  type AssetSensor,
 } from "@mission-orchestrator/engine";
 import {
   createServiceClient,
-  loadBelief,
   upsertBeliefFacts,
   insertReports,
+  loadReportsUpTo,
+  loadCommsModel,
   buildEngineInputFromDb,
   loadAssignments,
   upsertVolumeVisits,
@@ -37,9 +35,10 @@ export async function runTick(tick: number, simReports?: ReturnType<Simulator["t
     await insertReports(client, simReports);
   }
 
-  let belief = await loadBelief(client);
-  if (simReports?.length) {
-    belief = ingestReports(simReports, belief);
+  const commsModel = await loadCommsModel(client, now);
+  const reports = await loadReportsUpTo(client, now);
+  const belief = ingestReports(reports, new Map(), { commsModel, now, queryTs: (sent) => sent });
+  if (reports.length > 0) {
     await upsertBeliefFacts(client, belief);
   }
 
@@ -136,52 +135,12 @@ export async function applyTopPlan(planId: string, tick: number): Promise<void> 
   await runTick(tick);
 }
 
-export const DEMO_ASSETS: Asset[] = [
-  { id: "uuv-alpha", kind: "UUV", domain: "subsurface", depth_rating_m: 300, top_speed_kn: 8, gps_dependent: false },
-  { id: "usv-bravo", kind: "USV", domain: "surface", depth_rating_m: 0, top_speed_kn: 25, gps_dependent: true },
-];
-
-export const DEMO_SENSORS: AssetSensor[] = [
-  { asset_id: "uuv-alpha", sensor: "passive_acoustic", base_quality: 0.9, max_range_km: 10, k_motion: 1.6 },
-  { asset_id: "usv-bravo", sensor: "eo_ir", base_quality: 0.85, max_range_km: 15, k_motion: 0.36 },
-  { asset_id: "usv-bravo", sensor: "passive_acoustic", base_quality: 0.7, max_range_km: 8, k_motion: 1.6 },
-];
-
-export const DEMO_MISSIONS: MissionDef[] = [
-  {
-    id: "mission-track",
-    name: "Submarine Track",
-    priority: 0.9,
-    tasks: [
-      {
-        id: "task-track",
-        mission_id: "mission-track",
-        w_t: 1,
-        target_x: 2,
-        target_y: 0,
-        target_depth_m: 50,
-        window_end_s: 3600,
-        demands: [{ sensor: "passive_acoustic", min_quality: 0.5 }],
-        constraints: [{ kind: "domain", param: { domain: "subsurface" } }],
-      },
-    ],
-  },
-  {
-    id: "mission-patrol",
-    name: "Surface Patrol",
-    priority: 0.4,
-    tasks: [
-      {
-        id: "task-patrol",
-        mission_id: "mission-patrol",
-        w_t: 1,
-        target_x: 5,
-        target_y: 2,
-        target_depth_m: 0,
-        window_end_s: null,
-        demands: [{ sensor: "eo_ir", min_quality: 0.4 }],
-        constraints: [],
-      },
-    ],
-  },
-];
+export {
+  DEMO_ASSETS,
+  DEMO_SENSORS,
+  DEMO_MISSIONS,
+  DEMO_ASSIGNMENTS,
+  DEMO_COV_BASELINES,
+  buildDemoTimeline,
+  SCENARIO_META,
+} from "./scenarios/offshore-pipeline.js";

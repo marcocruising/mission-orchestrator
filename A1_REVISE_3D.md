@@ -1,7 +1,7 @@
 # A1-revise — 3D spatial model (reference — COMPLETE)
 
 **Status:** **COMPLETE** (June 2026)  
-**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **Phase D** (A0–A4 + B + C done)
+**Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **D3 next** (A0–A4 + B + C + UI-1 + D1 + **D2** done)
 
 Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
 
@@ -90,7 +90,9 @@ Run after each step: `pnpm verify` · `pnpm db:verify` (14 tables as of A3).
 | Search region | `packages/engine/src/searchRegion.ts` | 6D reachable set via MotionModel |
 | Migration | `supabase/migrations/20250614000006_a1_tracks.sql` | `tracks` table |
 | DB loader | `packages/db/src/tracks.ts` | load/upsert tracks |
-| UI | `apps/ui/src/App.tsx` | `ownAssetSearchRegion` from engine |
+| UI plan view | `apps/ui/src/PlanView.tsx` | Volume cells from `task_volume_visits`; search ellipse via `ownAssetSearchUncertainty` |
+| UI profile view | `apps/ui/src/ProfileView.tsx` | Signed z-up water column; seabed at −60 m |
+| UI shell | `apps/ui/src/App.tsx` | Realtime + scenario API; design from [`example_operator_console_design.html`](../example_operator_console_design.html) |
 
 Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 
@@ -101,14 +103,14 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 | Phase | Impact |
 |-------|--------|
 | **A2** ✅ | `MotionModel` on 6D SI state; `EnvironmentContext.sample(kind, Position3)` |
-| **A4** ✅ | `DEFAULT_ENV_FACTORS` with stub salinity/sea-state/fog |
+| **A4** ✅ | `DEFAULT_ENV_FACTORS` with D1 salinity/sea-state/fog bodies |
 | **B1** ✅ | `computeTaskLeaf` dispatch; rollup leaf-agnostic lint |
 | **C1a** ✅ | **AABB volume patrol** — [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md) |
 | **C1b** ✅ | Planner patrol sweep — `patrol:` handles, `planningOverrides` |
 | **C2** ✅ | Directional sensors — `beamGainFactor`, `checkPointingGate`, `beam_half_angle_deg` |
 | **D** ← next | Imported data, threats, LLM, Kalman, scan-time bodies |
 | **D3** | Threats as 2D polygons + z bounds |
-| **D5** | LLM formats altitude vs depth from signed z |
+| **D5** | LLM formats altitude vs depth from signed z; narrates into decision-column alert body |
 
 ---
 
@@ -127,4 +129,4 @@ Tests: ~181 passing with 1 Kalman `test.todo` (June 2026 session).
 
 Same as README PRIME DIRECTIVE: tests first → minimal impl → green suite → stop → wait for confirmation.
 
-Phase A + B + C complete — proceed to **Phase D** per [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).
+Phase A + B + C + D1 + D2 complete — proceed to **D3** per [HANDOVER.md](HANDOVER.md) and [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md).

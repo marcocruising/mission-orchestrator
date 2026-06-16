@@ -5,6 +5,7 @@ export type FieldKind =
   | "salinity_psu"
   | "sea_state_hs_m"
   | "wind_ms"
+  | "wind_direction_deg"
   | "current_u_ms"
   | "current_v_ms"
   | "fog_vis_km";
@@ -13,6 +14,7 @@ export const FIELD_KINDS: FieldKind[] = [
   "salinity_psu",
   "sea_state_hs_m",
   "wind_ms",
+  "wind_direction_deg",
   "current_u_ms",
   "current_v_ms",
   "fog_vis_km",

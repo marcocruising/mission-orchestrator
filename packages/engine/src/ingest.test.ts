@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ingestReports, mergeReportIntoBelief, reportToFact } from "./ingest.js";
+import { buildCommsModel } from "./commsModel.js";
 import { reconcile } from "./reconcile.js";
 import { Simulator } from "./simulator.js";
 import type { Asset, Belief } from "./types.js";
@@ -116,5 +117,36 @@ describe("mergeReportIntoBelief immutability", () => {
     });
     expect(before.size).toBe(0);
     expect(after.size).toBe(1);
+  });
+});
+
+describe("ingestReports pathDelay (D2)", () => {
+  const twoHop = buildCommsModel([
+    { from_id: "uuv-1", to_id: "relay", bandwidth_bps: 10_000, delay_s: 2, ts: 0 },
+    { from_id: "relay", to_id: "operator", bandwidth_bps: 10_000, delay_s: 3, ts: 0 },
+  ]);
+
+  it("stores delivery ts on facts when comms graph has multi-hop delay", () => {
+    const belief = ingestReports(
+      [{ ts: 10, asset_id: "uuv-1", field: "x_km", value: 4 }],
+      new Map(),
+      { commsModel: twoHop }
+    );
+    expect(getFact(belief, "uuv-1", "x_km")?.ts).toBe(15);
+  });
+
+  it("holds reports until now reaches delivery ts", () => {
+    const reports = [{ ts: 10, asset_id: "uuv-1", field: "x_km", value: 4 }];
+    expect(
+      getFact(ingestReports(reports, new Map(), { commsModel: twoHop, now: 12 }), "uuv-1", "x_km")
+    ).toBeUndefined();
+    expect(
+      getFact(ingestReports(reports, new Map(), { commsModel: twoHop, now: 15 }), "uuv-1", "x_km")?.value
+    ).toBe(4);
+  });
+
+  it("default staticCommsModel leaves ts unchanged (B2 guard)", () => {
+    const belief = ingestReports([{ ts: 10, asset_id: "uuv-1", field: "x_km", value: 1 }]);
+    expect(getFact(belief, "uuv-1", "x_km")?.ts).toBe(10);
   });
 });

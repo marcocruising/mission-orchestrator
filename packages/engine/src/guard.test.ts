@@ -218,13 +218,13 @@ describe("B2 envMult extensibility guard (T3.2 partial)", () => {
     vehicle: { asset_id: "v1", x_km: 0, y_km: 0, depth_m: 50, speed_kn: 4, top_speed_kn: 8 },
   };
 
-  it("salinity stub (third registry factor) is a no-op on the product", () => {
+  it("registry without environment matches motion-only (B2 guard)", () => {
     const motionOnly = envMult([motionEnvFactor], ctx);
     const withRegistry = envMult(DEFAULT_ENV_FACTORS, ctx);
     expect(withRegistry).toBeCloseTo(motionOnly, 12);
   });
 
-  it("salinityFactor stub returns 1.0 in isolation", () => {
+  it("salinityFactor returns 1.0 without environment", () => {
     expect(salinityFactor(ctx)).toBe(1);
   });
 });
