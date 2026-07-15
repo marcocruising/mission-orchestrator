@@ -59,19 +59,34 @@ function simulator() {
 /** Clear tick-derived rows so the scenario can be replayed from tick 0. */
 export async function resetScenarioRuntime(): Promise<void> {
   const client = createServiceClient();
-  const tables = [
-    () => client.from("task_volume_visits").delete().gte("task_id", ""),
-    () => client.from("plan_eval").delete().gte("plan_id", ""),
-    () => client.from("candidate_plans").delete().gte("plan_id", ""),
-    () => client.from("alert_log").delete().gte("ts", 0),
-    () => client.from("decision_log").delete().gte("ts", 0),
-    () => client.from("mission_state").delete().gte("tick", 0),
-    () => client.from("belief_facts").delete().gte("ts", 0),
-    () => client.from("reports").delete().gte("ts", 0),
-    () => client.from("world_truth").delete().gte("tick", 0),
+  const withTimeout = async <T>(label: string, p: Promise<T>, ms = 15_000): Promise<T> => {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        p,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`reset timed out: ${label}`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const ops: { label: string; run: () => Promise<{ error: unknown | null }> }[] = [
+    { label: "task_volume_visits", run: async () => client.from("task_volume_visits").delete().gte("task_id", "") },
+    { label: "plan_eval", run: async () => client.from("plan_eval").delete().gte("plan_id", "") },
+    { label: "candidate_plans", run: async () => client.from("candidate_plans").delete().gte("plan_id", "") },
+    { label: "alert_log", run: async () => client.from("alert_log").delete().gte("ts", 0) },
+    { label: "decision_log", run: async () => client.from("decision_log").delete().gte("ts", 0) },
+    { label: "mission_state", run: async () => client.from("mission_state").delete().gte("tick", 0) },
+    { label: "belief_facts", run: async () => client.from("belief_facts").delete().gte("ts", 0) },
+    { label: "reports", run: async () => client.from("reports").delete().gte("ts", 0) },
+    { label: "world_truth", run: async () => client.from("world_truth").delete().gte("tick", 0) },
   ];
-  for (const run of tables) {
-    const { error } = await run();
+
+  for (const op of ops) {
+    const { error } = await withTimeout(`delete ${op.label}`, op.run());
     if (error) throw error;
   }
 }
@@ -120,10 +135,14 @@ export async function replayToTick(target: number): Promise<{ tick: number; resu
 
   await seedCovBaselines();
 
-  try {
-    await runEnvFetch({ allTicks: true });
-  } catch (err) {
-    console.warn("env-fetch skipped:", err instanceof Error ? err.message : err);
+  // Keep reset-to-tick-0 fast: env-fetch can be slow and is not required
+  // for a coherent starting tick.
+  if (target >= 1) {
+    try {
+      await runEnvFetch({ allTicks: true });
+    } catch (err) {
+      console.warn("env-fetch skipped:", err instanceof Error ? err.message : err);
+    }
   }
 
   const results: TickResult[] = [];

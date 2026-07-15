@@ -42,8 +42,16 @@ export function orchestratorApiPlugin(): Plugin {
         if (!url.startsWith("/api/")) return next();
 
         try {
-          const { handleApi } = await import(pathToFileURL(handlersPath).href);
-          const body = req.method === "POST" ? await readBody(req) : undefined;
+          // Bust node ESM import cache so edits to orchestrator handlers
+          // take effect without restarting the UI dev server.
+          const handlersUrl = `${pathToFileURL(handlersPath).href}?t=${Date.now()}`;
+          const { handleApi } = await import(handlersUrl);
+          const contentLength = Number(req.headers["content-length"] ?? "0");
+          const hasBody =
+            req.method === "POST" &&
+            (contentLength > 0 || typeof req.headers["transfer-encoding"] === "string");
+          const body =
+            req.method === "POST" ? (hasBody ? await readBody(req) : {}) : undefined;
           const { status, body: payload } = await handleApi(req.method ?? "GET", url, body);
           sendJson(res, status, payload);
         } catch (err) {

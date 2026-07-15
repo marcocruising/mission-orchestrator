@@ -4,6 +4,8 @@ import {
   getCurrentTick,
   replayToTick,
   scenarioInfo,
+  resetScenarioRuntime,
+  runScenarioTick,
 } from "./scenario-run.js";
 
 export interface ApiResponse {
@@ -71,8 +73,18 @@ export async function handleApi(
   }
 
   if (method === "POST" && path === "/api/reset") {
-    const { tick } = await replayToTick(-1);
-    return { status: 200, body: { tick } };
+    // Reset should leave the operator at tick 0 with a coherent starting state.
+    // We intentionally avoid replayToTick(0) here to keep the UI button snappy
+    // and reduce risk of long-running replay paths.
+    await resetScenarioRuntime();
+    await runScenarioTick(0);
+    return { status: 200, body: { tick: 0 } };
+  }
+
+  // Debug / health: clear runtime tables only (no replay).
+  if (method === "POST" && path === "/api/reset-runtime") {
+    await resetScenarioRuntime();
+    return { status: 200, body: { ok: true } };
   }
 
   if (method === "POST" && path === "/api/apply-plan") {
