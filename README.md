@@ -15,6 +15,38 @@ demo knobs.)
 
 ---
 
+## Operator console — how it works
+
+Run `pnpm --filter @mission-orchestrator/ui dev` and open http://localhost:5173
+([offshore pipeline walkthrough](SCENARIO_OFFSHORE.md)). If the database is empty, append `?demo=1` to
+see the captured tick-4 state shown below.
+
+### Disruption + ranked plans (tick 4)
+
+UUV-Guardian drops off the acoustic relay. The console keeps **coverage** and **confidence** as two
+numbers, grows a search ellipse around last known position, and ranks reassignment options — including
+do-nothing. The operator commits; the system never auto-applies.
+
+![Operator console at tick 4: fleet rail, plan view with search ellipse, water-column profile, alert, and ranked plan cards](docs/screenshots/console-tick4-overview.png)
+
+| Region | What you are looking at |
+|--------|-------------------------|
+| **Header** | Mission health pills — coverage bar + separate confidence dot. Pipeline guard is AT-RISK. |
+| **Fleet rail** | Four assets (USV / UUV / UAV) with z, speed, battery, comms. UUV shows lost comms. |
+| **Plan view** | 20×20 km chart: pipeline corridor, visited volume cells (green), Alpha rig, pulsing search ellipse. |
+| **Water column** | Side elevation — air / surface / seafloor (−60 m) so depth is readable. |
+| **Decision column** | Salience-gated alert + ranked plans (reassign, slow, or hold). **Accept & commit** writes through `applyPlan`. |
+| **Timeline** | Scenario scrubber, ticks 0–8. |
+
+### Asset drawer
+
+Click an asset for the capability vector: base quality vs effective quality *now* (range × motion ×
+environment), operating point, and current tasking.
+
+![UUV Guardian asset drawer showing sensor base vs effective bars and operating point](docs/screenshots/console-tick4-asset-drawer.png)
+
+---
+
 ## ⛔ PRIME DIRECTIVE — how you must work
 
 **Build iteratively, one step at a time. Never one-shot this project.** For EVERY step:

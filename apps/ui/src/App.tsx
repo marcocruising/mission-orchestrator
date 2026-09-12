@@ -35,6 +35,21 @@ import {
   type DecisionLogRow,
   zMFromBeliefFields,
 } from "./lib.js";
+import {
+  DEMO_ALERTS,
+  DEMO_ASSETS,
+  DEMO_ASSIGNMENTS,
+  DEMO_CANDIDATES,
+  DEMO_FACTS,
+  DEMO_MISSIONS,
+  DEMO_MISSION_DEFS,
+  DEMO_PLANS,
+  DEMO_SENSORS,
+  DEMO_TASKS,
+  DEMO_TICK_LABELS,
+  DEMO_VISITS,
+  isDemoMode,
+} from "./demoFixture.js";
 
 interface ScenarioTick {
   tick: number;
@@ -91,7 +106,7 @@ export function App() {
   );
 
   const refresh = useCallback(async () => {
-    if (!supabase) return;
+    if (isDemoMode() || !supabase) return;
     const [a, f, md, m, p, cp, al, t, v, sn, asn, dec, env] = await Promise.all([
       supabase.from("assets").select("id, kind, domain, top_speed_kn"),
       supabase.from("belief_facts").select("asset_id, field, value, ts"),
@@ -150,6 +165,25 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (isDemoMode()) {
+      setAssets(DEMO_ASSETS);
+      setFacts(DEMO_FACTS);
+      setMissionDefs(DEMO_MISSION_DEFS);
+      setMissions(DEMO_MISSIONS);
+      setPlans(DEMO_PLANS);
+      setCandidates(DEMO_CANDIDATES);
+      setAlerts(DEMO_ALERTS);
+      setTasks(DEMO_TASKS);
+      setVisits(DEMO_VISITS);
+      setSensors(DEMO_SENSORS);
+      setAssignments(DEMO_ASSIGNMENTS);
+      setTickLabels(DEMO_TICK_LABELS);
+      setCurrentTick(4);
+      setSliderTick(4);
+      setApiReady(true);
+      setOffline(false);
+      return;
+    }
     refresh();
     if (!supabase) return;
     const channel = supabase
@@ -169,6 +203,7 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
+    if (isDemoMode()) return;
     fetch("/api/scenario")
       .then(async (r) => {
         const data = await r.json().catch(() => null);
