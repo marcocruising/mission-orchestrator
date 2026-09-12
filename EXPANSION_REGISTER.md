@@ -5,7 +5,7 @@
 > **New agent pickup:** [HANDOVER.md](HANDOVER.md) § *Agent pickup* · canonical plan below · demo: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md) · design mock: [`example_operator_console_design.html`](example_operator_console_design.html).
 > Health: `pnpm db:verify` (**17/17** tables) · `pnpm verify` (~**213** tests · 1 Kalman `test.todo`).
 
-This replaces the flat Deferred register in [README.md](README.md). Every expansion is classified by
+This replaces the flat Deferred register in [BUILD.md](BUILD.md). Every expansion is classified by
 **what it requires of the architecture**, because the deferral rule is different for each tier.
 
 ---

@@ -2,7 +2,7 @@
 
 > **Purpose:** Single-operator decision support for a fleet of unmanned naval vehicles (UAV / USV / UUV). When a vehicle fails or degrades, the system recomputes mission health, raises alerts, ranks reassignment plans, and lets the operator commit — never auto-commits.
 
-This document maps **what exists**, **how pieces relate**, and **where logic lives**. For build history see [HANDOVER.md](HANDOVER.md); for formulas see [README.md](README.md).
+This document maps **what exists**, **how pieces relate**, and **where logic lives**. For build history see [HANDOVER.md](HANDOVER.md); for formulas see [BUILD.md](BUILD.md).
 
 ---
 

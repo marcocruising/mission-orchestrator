@@ -3,7 +3,7 @@
 **Date:** June 2026  
 **Status:** S0–S10 · **A0–A4** · **B** · **C (C1a–C1b + C2)** · **UI-1** · **D1** · **D2** · **D3 (threats / exposure / risk)** complete · remote Supabase live (**17 tables**)
 
-**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D (**D4 next**). Demo UI: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md). C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
+**New agent:** Read this file first, then **[EXPANSION_REGISTER.md](EXPANSION_REGISTER.md)** § Phase D (**D4 next**). Build spec: [BUILD.md](BUILD.md). Demo UI: [SCENARIO_OFFSHORE.md](SCENARIO_OFFSHORE.md). C1 archive: [C1_VOLUME_PATROL.md](C1_VOLUME_PATROL.md).
 
 ---
 

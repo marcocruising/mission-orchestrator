@@ -3,7 +3,7 @@
 **Status:** **COMPLETE** (June 2026)  
 **Next work:** [HANDOVER.md](HANDOVER.md) · [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) — **D4 next** (A0–A4 + B + C + UI-1 + D1 + D2 + **D3** done)
 
-Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [README.md](README.md)
+Read first: [EXPANSION_REGISTER.md](EXPANSION_REGISTER.md) · [HANDOVER.md](HANDOVER.md) · [BUILD.md](BUILD.md)
 
 ---
 
